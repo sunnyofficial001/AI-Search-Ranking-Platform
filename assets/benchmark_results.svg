@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460">
+  <style>
+    .title { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-weight:700; }
+    .label { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-size:12px; }
+    .value { font-family: Inter, Arial, sans-serif; fill: #fff; font-size:12px; font-weight:700; }
+    .bar-label { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-size:13px; }
+    .table { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-size:12px; }
+  </style>
+
+  <rect width="100%" height="100%" fill="#f7fbfc" />
+  <text x="40" y="40" class="title" font-size="20">Benchmark Results — Ranking Metrics</text>
+  <text x="40" y="64" class="label">NDCG@10 comparison and summary metrics (n_queries=2000)</text>
+
+  <!-- Bar chart area -->
+  <g transform="translate(40,100)">
+    <rect x="0" y="0" width="520" height="280" rx="8" fill="#ffffff" stroke="#e6eef8"/>
+
+    <!-- Axes -->
+    <line x1="56" y1="230" x2="480" y2="230" stroke="#e6eef8" stroke-width="1"/>
+
+    <!-- Bars: scale 0.0-0.6 -> 0-160px height -->
+    <!-- Values: Pointwise 0.44412, Pairwise 0.21071, Listwise 0.45124 -->
+    <!-- Compute heights: h = value/0.6 * 160 -->
+    <!-- h_pointwise = 0.44412/0.6*160 = 118.432 -->
+    <!-- h_pairwise = 0.21071/0.6*160 = 56.225 -->
+    <!-- h_listwise = 0.45124/0.6*160 = 120.333 -->
+
+    <!-- Pointwise -->
+    <g transform="translate(96,230)">
+      <rect x="-32" y="-118.432" width="64" height="118.432" rx="6" fill="#1f7a8c"/>
+      <text x="0" y="18" text-anchor="middle" class="bar-label">Pointwise</text>
+      <text x="0" y="-128" text-anchor="middle" class="value">0.444</text>
+    </g>
+
+    <!-- Pairwise -->
+    <g transform="translate(240,230)">
+      <rect x="-32" y="-56.225" width="64" height="56.225" rx="6" fill="#2ec4b6"/>
+      <text x="0" y="18" text-anchor="middle" class="bar-label">Pairwise</text>
+      <text x="0" y="-66" text-anchor="middle" class="value">0.211</text>
+    </g>
+
+    <!-- Listwise -->
+    <g transform="translate(384,230)">
+      <rect x="-32" y="-120.333" width="64" height="120.333" rx="6" fill="#3fb0ac"/>
+      <text x="0" y="18" text-anchor="middle" class="bar-label">Listwise</text>
+      <text x="0" y="-130" text-anchor="middle" class="value">0.451</text>
+    </g>
+
+    <!-- Y axis labels -->
+    <text x="8" y="230" class="label">0.0</text>
+    <text x="8" y="150" class="label">0.3</text>
+    <text x="8" y="70" class="label">0.6</text>
+  </g>
+
+  <!-- Metrics table -->
+  <g transform="translate(600,110)">
+    <rect x="0" y="0" width="260" height="160" rx="8" fill="#ffffff" stroke="#e6eef8"/>
+    <text x="16" y="26" class="title" font-size="14">Metrics Summary</text>
+
+    <!-- Headers -->
+    <text x="18" y="50" class="table" font-weight="700">Model</text>
+    <text x="140" y="50" class="table" font-weight="700">MAP</text>
+    <text x="200" y="50" class="table" font-weight="700">MRR</text>
+
+    <!-- Pointwise -->
+    <text x="18" y="76" class="table">Pointwise (XGBoost)</text>
+    <text x="140" y="76" class="table">0.6099</text>
+    <text x="200" y="76" class="table">0.8269</text>
+
+    <!-- Pairwise -->
+    <text x="18" y="100" class="table">Pairwise (RankNet)</text>
+    <text x="140" y="100" class="table">0.4682</text>
+    <text x="200" y="100" class="table">0.5996</text>
+
+    <!-- Listwise -->
+    <text x="18" y="124" class="table">Listwise (LambdaMART)</text>
+    <text x="140" y="124" class="table">0.6061</text>
+    <text x="200" y="124" class="table">0.8302</text>
+
+    <text x="16" y="150" class="label">n_queries = 2000</text>
+  </g>
+
+  <text x="40" y="420" class="label">Generated from reports/metrics.json — NDCG@10, MAP, and MRR values pulled from test set evaluations.</text>
+</svg>

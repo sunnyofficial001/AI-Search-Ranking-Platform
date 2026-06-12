@@ -1,0 +1,6 @@
+{
+  "name": "AI Search Platform",
+  "description": "Intelligent search retrieval, learning-to-rank, recommendation engines (Matrix Factorization, Collaborative, Content-Based), SHAP importance, and MLflow tracing dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

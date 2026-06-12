@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="1200" height="820" viewBox="0 0 1200 820" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .box { fill: #ffffff; stroke: #1f7a8c; stroke-width: 2; rx: 10; }
+    .svc { fill: #07263b; stroke: #1f7a8c; stroke-width: 1; rx: 8; }
+    .text { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; }
+    .label { font-family: Inter, Arial, sans-serif; fill: #e6f8fb; font-size: 12px; }
+    .small { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-size: 12px; }
+    .arrow { stroke: #9be7e0; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9be7e0"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="24" y="36" class="text" font-size="20" font-weight="700">AI Search &amp; Ranking Platform — Architecture</text>
+  <text x="24" y="58" class="small">Frontend, middleware, backend services, feature store, model registry, MLOps and monitoring.</text>
+
+  <!-- Frontend -->
+  <g transform="translate(36,92)">
+    <rect class="box" x="0" y="0" width="260" height="84"/>
+    <text x="18" y="28" class="text" font-size="16" font-weight="700">Frontend</text>
+    <text x="18" y="52" class="small">React + Vite (App.tsx, main.tsx)</text>
+  </g>
+
+  <!-- Dev server / API gateway -->
+  <g transform="translate(340,92)">
+    <rect class="box" x="0" y="0" width="300" height="84"/>
+    <text x="18" y="28" class="text" font-size="16" font-weight="700">Dev Server / API Gateway</text>
+    <text x="18" y="52" class="small">server.ts — Vite middleware &amp; API routing</text>
+  </g>
+
+  <!-- Backend -->
+  <g transform="translate(680,92)">
+    <rect class="box" x="0" y="0" width="420" height="120"/>
+    <text x="18" y="28" class="text" font-size="16" font-weight="700">Backend (FastAPI)</text>
+    <text x="18" y="52" class="small">backend/main.py — API endpoints &amp; ranking pipeline</text>
+
+    <g transform="translate(18,66)">
+      <text class="small">Services:</text>
+      <text class="small" x="0" y="18">• search_service.py (retrieval)</text>
+      <text class="small" x="0" y="36">• ranking_engine.py (scoring &amp; LTR)</text>
+      <text class="small" x="0" y="54">• mlflow_service.py (model tracking)</text>
+    </g>
+  </g>
+
+  <!-- Arrows front->gateway->backend -->
+  <path class="arrow" d="M300 134 L340 134" />
+  <path class="arrow" d="M640 134 L680 134" />
+
+  <!-- Data & infra cluster -->
+  <g transform="translate(36,240)">
+    <rect class="svc" x="0" y="0" width="1120" height="180" rx="12"/>
+    <text x="16" y="26" class="label" font-size="14">Data &amp; Infrastructure</text>
+
+    <!-- Sub-services -->
+    <g transform="translate(28,48)">
+      <rect x="0" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="12" y="22" class="text" font-size="14">Postgres</text>
+      <text x="12" y="40" class="small">Persistent metadata, features</text>
+
+      <rect x="280" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="292" y="22" class="text" font-size="14">Elasticsearch</text>
+      <text x="292" y="40" class="small">Document retrieval / candidate fetch</text>
+
+      <rect x="560" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="572" y="22" class="text" font-size="14">Redis</text>
+      <text x="572" y="40" class="small">Caching &amp; session store</text>
+
+      <rect x="840" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="852" y="22" class="text" font-size="14">MLflow</text>
+      <text x="852" y="40" class="small">Model registry &amp; experiments</text>
+
+      <!-- second row -->
+      <rect x="0" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="12" y="106" class="text" font-size="14">Feature Store</text>
+      <text x="12" y="124" class="small">Feature lookup &amp; materialization</text>
+
+      <rect x="280" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="292" y="106" class="text" font-size="14">Training Pipeline</text>
+      <text x="292" y="124" class="small">train_pipeline.py, HPO</text>
+
+      <rect x="560" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="572" y="106" class="text" font-size="14">Drift Detection</text>
+      <text x="572" y="124" class="small">drift_monitor.py</text>
+
+      <rect x="840" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
+      <text x="852" y="106" class="text" font-size="14">Monitoring</text>
+      <text x="852" y="124" class="small">Prometheus + Grafana</text>
+    </g>
+  </g>
+
+  <!-- Arrows backend -> infra services -->
+  <path class="arrow" d="M920 212 L920 240" />
+  <path class="arrow" d="M760 212 L760 240" />
+  <path class="arrow" d="M820 212 L820 240" />
+
+  <!-- Notes / legend -->
+  <rect x="36" y="452" width="420" height="120" rx="8" fill="#fff" stroke="#1f7a8c"/>
+  <text x="50" y="478" class="text" font-size="14" font-weight="700">Operational notes</text>
+  <text x="50" y="500" class="small">• Entrypoints: `server.ts` (dev) and `backend/main.py` (FastAPI)</text>
+  <text x="50" y="518" class="small">• Demo: `backend/demo` generates small MSLR-like dataset for quick runs</text>
+  <text x="50" y="536" class="small">• CI: GitHub Actions run pytest and frontend build</text>
+
+  <rect x="480" y="452" width="420" height="120" rx="8" fill="#fff" stroke="#1f7a8c"/>
+  <text x="494" y="478" class="text" font-size="14" font-weight="700">MLOps</text>
+  <text x="494" y="500" class="small">• Model tracking: MLflow</text>
+  <text x="494" y="518" class="small">• Feature lineage: feature_store</text>
+  <text x="494" y="536" class="small">• Alerts: Prometheus rules + Grafana dashboards</text>
+
+  <text x="36" y="600" class="small">Generated from project files: server.ts, backend/, docker-compose.yml, and reports/metrics.json</text>
+</svg>

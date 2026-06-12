@@ -1,0 +1,37 @@
+{
+    "dataset": "MSLR-WEB10K Fold1",
+    "num_features": 136,
+    "train": {
+        "n_docs": 150000,
+        "n_queries": 1217,
+        "label_distribution": {
+            "0": 80891,
+            "1": 46678,
+            "2": 19150,
+            "3": 2403,
+            "4": 878
+        }
+    },
+    "vali": {
+        "n_docs": 235259,
+        "n_queries": 2000,
+        "label_distribution": {
+            "0": 121522,
+            "1": 75815,
+            "2": 31910,
+            "3": 4209,
+            "4": 1803
+        }
+    },
+    "test": {
+        "n_docs": 241521,
+        "n_queries": 2000,
+        "label_distribution": {
+            "0": 124784,
+            "1": 77896,
+            "2": 32459,
+            "3": 4450,
+            "4": 1932
+        }
+    }
+}

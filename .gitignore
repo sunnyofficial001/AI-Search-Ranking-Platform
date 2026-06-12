@@ -1,0 +1,67 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Large dataset files - too big for GitHub (800MB+)
+data/Fold1/train.txt
+data/Fold1/vali.txt
+data/Fold1/test.txt
+data/Fold1/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+
+# Model files (can be large)
+models/*.model
+models/*.json
+mlruns/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Ignore common large ML artifacts and experiment trackers
+mlruns/
+*.ckpt
+*.pt
+*.pth
+*.h5
+*.onnx
+models/
+
+# Notebook checkpoints and outputs
+*.ipynb_checkpoints
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Tool caches (never commit these)
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test artifacts
+*.xml
+bandit-report.json
+drift-report.json
+coverage.xml

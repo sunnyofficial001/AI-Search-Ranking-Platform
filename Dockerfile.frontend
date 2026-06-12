@@ -1,0 +1,27 @@
+# Standard High Performance Node base image
+FROM node:18-alpine
+
+WORKDIR /workspace
+
+# Install system dependencies if any
+RUN apk add --no-cache curl
+
+# Copy manifest files
+COPY package.json package-lock.json* ./
+
+# Install npm dependencies
+RUN npm install
+
+# Copy source files
+COPY . .
+
+# Build the React single page bundle and Node production server CJS package
+RUN npm run build
+
+# Port 3000 is standard reverse-proxy router
+EXPOSE 3000
+
+ENV PORT=3000
+ENV NODE_ENV=production
+
+CMD ["npm", "run", "start"]

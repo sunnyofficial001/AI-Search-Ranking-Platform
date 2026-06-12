@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # 1. Core FastAPI Search & Recommender Microservice
+  api_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ltr_api_service
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+    depends_on:
+      - postgres_db
+      - redis_cache
+      - elasticsearch_index
+
+  # 1b. React UI Frontend Node service serving dashboards and ranking visualizations
+  web_frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ltr_web_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://api_service:8000
+    depends_on:
+      - api_service
+
+  # 2. Relational Database holding logs, configurations and records
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: ltr_postgres_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 3. High Performance In-Memory cache speed accelerator
+  redis_cache:
+    image: redis:7-alpine
+    container_name: ltr_redis_cache
+    ports:
+      - "6379:6379"
+
+  # 4. Keyword and Candidate Retrieval search engine
+  elasticsearch_index:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: ltr_elasticsearch_index
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  # 5. MLflow experiment manager and models registry portal
+  mlflow_tracker:
+    image: ghcr.io/mlflow/mlflow:v2.3.1
+    container_name: ltr_mlflow_tracker
+    ports:
+      - "5000:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts
+
+volumes:
+  postgres_data:
+  es_data:
