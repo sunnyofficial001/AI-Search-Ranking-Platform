@@ -1,114 +1,109 @@
-<?xml version="1.0" encoding="utf-8"?>
-<svg width="1200" height="820" viewBox="0 0 1200 820" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    .box { fill: #ffffff; stroke: #1f7a8c; stroke-width: 2; rx: 10; }
-    .svc { fill: #07263b; stroke: #1f7a8c; stroke-width: 1; rx: 8; }
-    .text { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; }
-    .label { font-family: Inter, Arial, sans-serif; fill: #e6f8fb; font-size: 12px; }
-    .small { font-family: Inter, Arial, sans-serif; fill: #0b2b3a; font-size: 12px; }
-    .arrow { stroke: #9be7e0; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" fill="none">
   <defs>
-    <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9be7e0"/>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A0D14" />
+      <stop offset="100%" stop-color="#121826" />
+    </linearGradient>
+    <linearGradient id="card-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" opacity="0.8" />
+      <stop offset="100%" stop-color="#0F172A" opacity="0.9" />
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#06B6D4" />
     </marker>
   </defs>
 
+  <!-- Background -->
+  <rect width="1200" height="700" fill="url(#bg)" stroke="#1E293B" stroke-width="2" />
+  
   <!-- Title -->
-  <text x="24" y="36" class="text" font-size="20" font-weight="700">AI Search &amp; Ranking Platform — Architecture</text>
-  <text x="24" y="58" class="small">Frontend, middleware, backend services, feature store, model registry, MLOps and monitoring.</text>
+  <text x="50" y="45" font-family="Inter, sans-serif" font-size="22" font-weight="800" fill="#F8FAFC">AI Search &amp; Ranking Platform — End-to-End System Architecture</text>
+  <text x="50" y="68" font-family="Inter, sans-serif" font-size="13" font-weight="400" fill="#94A3B8">Decoupled Candidate Retrieval • Redis Feature Store • Multi-Stage Learning-to-Rank • SHAP Explainability &amp; Telemetry</text>
 
-  <!-- Frontend -->
-  <g transform="translate(36,92)">
-    <rect class="box" x="0" y="0" width="260" height="84"/>
-    <text x="18" y="28" class="text" font-size="16" font-weight="700">Frontend</text>
-    <text x="18" y="52" class="small">React + Vite (App.tsx, main.tsx)</text>
+  <!-- Layer 1: Client & Gateway -->
+  <g transform="translate(50, 100)">
+    <rect width="250" height="110" rx="10" fill="url(#card-bg)" stroke="#06B6D4" stroke-width="1.5" />
+    <text x="20" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#38BDF8">1. Client Layer</text>
+    <text x="20" y="58" font-family="Inter, sans-serif" font-size="12" fill="#E2E8F0">React 19 / TypeScript SPA</text>
+    <text x="20" y="78" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Search UI • Ranking Hub • SHAP</text>
   </g>
 
-  <!-- Dev server / API gateway -->
-  <g transform="translate(340,92)">
-    <rect class="box" x="0" y="0" width="300" height="84"/>
-    <text x="18" y="28" class="text" font-size="16" font-weight="700">Dev Server / API Gateway</text>
-    <text x="18" y="52" class="small">server.ts — Vite middleware &amp; API routing</text>
+  <path d="M300 155 H370" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="4 2" />
+
+  <g transform="translate(380, 100)">
+    <rect width="260" height="110" rx="10" fill="url(#card-bg)" stroke="#3B82F6" stroke-width="1.5" />
+    <text x="20" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#60A5FA">2. API Gateway</text>
+    <text x="20" y="58" font-family="Inter, sans-serif" font-size="12" fill="#E2E8F0">Express.js API Gateway (3000)</text>
+    <text x="20" y="78" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Route Proxying • Gemini Expansion</text>
   </g>
 
-  <!-- Backend -->
-  <g transform="translate(680,92)">
-    <rect class="box" x="0" y="0" width="420" height="120"/>
-    <text x="18" y="28" class="text" font-size="16" font-weight="700">Backend (FastAPI)</text>
-    <text x="18" y="52" class="small">backend/main.py — API endpoints &amp; ranking pipeline</text>
+  <path d="M640 155 H710" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
 
-    <g transform="translate(18,66)">
-      <text class="small">Services:</text>
-      <text class="small" x="0" y="18">• search_service.py (retrieval)</text>
-      <text class="small" x="0" y="36">• ranking_engine.py (scoring &amp; LTR)</text>
-      <text class="small" x="0" y="54">• mlflow_service.py (model tracking)</text>
-    </g>
+  <g transform="translate(720, 100)">
+    <rect width="430" height="110" rx="10" fill="url(#card-bg)" stroke="#10B981" stroke-width="1.5" />
+    <text x="20" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#34D399">3. Machine Learning Engine (FastAPI 8000)</text>
+    <text x="20" y="58" font-family="Inter, sans-serif" font-size="12" fill="#E2E8F0">FastAPI Async Core Services</text>
+    <text x="20" y="78" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">SearchService • RankingEngine • MLflowService • DriftMonitor</text>
   </g>
 
-  <!-- Arrows front->gateway->backend -->
-  <path class="arrow" d="M300 134 L340 134" />
-  <path class="arrow" d="M640 134 L680 134" />
+  <!-- Flow Down to Data & Retrieval Layer -->
+  <path d="M935 210 V270" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
 
-  <!-- Data & infra cluster -->
-  <g transform="translate(36,240)">
-    <rect class="svc" x="0" y="0" width="1120" height="180" rx="12"/>
-    <text x="16" y="26" class="label" font-size="14">Data &amp; Infrastructure</text>
+  <!-- Layer 2: Retrieval & Feature Store -->
+  <g transform="translate(50, 280)">
+    <!-- Container Box -->
+    <rect width="1100" height="160" rx="12" fill="#0F172A" stroke="#334155" stroke-width="1" />
+    <text x="25" y="30" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Candidate Retrieval &amp; Feature Store Layer</text>
 
-    <!-- Sub-services -->
-    <g transform="translate(28,48)">
-      <rect x="0" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="12" y="22" class="text" font-size="14">Postgres</text>
-      <text x="12" y="40" class="small">Persistent metadata, features</text>
+    <!-- BM25 Index -->
+    <rect x="25" y="48" width="320" height="90" rx="8" fill="#1E293B" stroke="#06B6D4" stroke-width="1" />
+    <text x="45" y="75" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#38BDF8">Elasticsearch / BM25 Index</text>
+    <text x="45" y="98" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Candidate reduction: 600,000 → Top-100 items</text>
+    <text x="45" y="118" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#34D399">LATENCY &lt; 1.0 ms</text>
 
-      <rect x="280" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="292" y="22" class="text" font-size="14">Elasticsearch</text>
-      <text x="292" y="40" class="small">Document retrieval / candidate fetch</text>
+    <!-- Redis Cache -->
+    <rect x="390" y="48" width="320" height="90" rx="8" fill="#1E293B" stroke="#E11D48" stroke-width="1" />
+    <text x="410" y="75" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#FB7185">Redis Feature Store Cache</text>
+    <text x="410" y="98" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">136-dim vector hydration (TTL 300s)</text>
+    <text x="410" y="118" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#34D399">P99 LATENCY 1.8 ms (600%+ QPS Boost)</text>
 
-      <rect x="560" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="572" y="22" class="text" font-size="14">Redis</text>
-      <text x="572" y="40" class="small">Caching &amp; session store</text>
-
-      <rect x="840" y="0" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="852" y="22" class="text" font-size="14">MLflow</text>
-      <text x="852" y="40" class="small">Model registry &amp; experiments</text>
-
-      <!-- second row -->
-      <rect x="0" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="12" y="106" class="text" font-size="14">Feature Store</text>
-      <text x="12" y="124" class="small">Feature lookup &amp; materialization</text>
-
-      <rect x="280" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="292" y="106" class="text" font-size="14">Training Pipeline</text>
-      <text x="292" y="124" class="small">train_pipeline.py, HPO</text>
-
-      <rect x="560" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="572" y="106" class="text" font-size="14">Drift Detection</text>
-      <text x="572" y="124" class="small">drift_monitor.py</text>
-
-      <rect x="840" y="86" width="240" height="60" rx="8" fill="#fff" stroke="#0b3b6f"/>
-      <text x="852" y="106" class="text" font-size="14">Monitoring</text>
-      <text x="852" y="124" class="small">Prometheus + Grafana</text>
-    </g>
+    <!-- PostgreSQL / SQLite -->
+    <rect x="755" y="48" width="320" height="90" rx="8" fill="#1E293B" stroke="#3B82F6" stroke-width="1" />
+    <text x="775" y="75" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#60A5FA">PostgreSQL / SQLite Database</text>
+    <text x="775" y="98" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Canonical product catalog &amp; clickstream logs</text>
+    <text x="775" y="118" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#94A3B8">SQLAlchemy ORM + Seeder</text>
   </g>
 
-  <!-- Arrows backend -> infra services -->
-  <path class="arrow" d="M920 212 L920 240" />
-  <path class="arrow" d="M760 212 L760 240" />
-  <path class="arrow" d="M820 212 L820 240" />
+  <!-- Flow Down to Ranking & Observability Layer -->
+  <path d="M600 440 V490" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
 
-  <!-- Notes / legend -->
-  <rect x="36" y="452" width="420" height="120" rx="8" fill="#fff" stroke="#1f7a8c"/>
-  <text x="50" y="478" class="text" font-size="14" font-weight="700">Operational notes</text>
-  <text x="50" y="500" class="small">• Entrypoints: `server.ts` (dev) and `backend/main.py` (FastAPI)</text>
-  <text x="50" y="518" class="small">• Demo: `backend/demo` generates small MSLR-like dataset for quick runs</text>
-  <text x="50" y="536" class="small">• CI: GitHub Actions run pytest and frontend build</text>
+  <!-- Layer 3: Multi-Stage Ranking & Observability -->
+  <g transform="translate(50, 500)">
+    <rect width="1100" height="150" rx="12" fill="#0F172A" stroke="#334155" stroke-width="1" />
+    <text x="25" y="30" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Multi-Stage Learning-to-Rank &amp; Observability Subsystems</text>
 
-  <rect x="480" y="452" width="420" height="120" rx="8" fill="#fff" stroke="#1f7a8c"/>
-  <text x="494" y="478" class="text" font-size="14" font-weight="700">MLOps</text>
-  <text x="494" y="500" class="small">• Model tracking: MLflow</text>
-  <text x="494" y="518" class="small">• Feature lineage: feature_store</text>
-  <text x="494" y="536" class="small">• Alerts: Prometheus rules + Grafana dashboards</text>
+    <!-- XGBoost -->
+    <rect x="25" y="48" width="240" height="80" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1" />
+    <text x="40" y="75" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#FBBF24">Pointwise XGBoost</text>
+    <text x="40" y="95" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Score Regressor</text>
+    <text x="40" y="112" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#FBBF24">NDCG@10 = 0.4441</text>
 
-  <text x="36" y="600" class="small">Generated from project files: server.ts, backend/, docker-compose.yml, and reports/metrics.json</text>
+    <!-- RankNet -->
+    <rect x="290" y="48" width="240" height="80" rx="8" fill="#1E293B" stroke="#EC4899" stroke-width="1" />
+    <text x="305" y="75" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#F472B6">Pairwise RankNet</text>
+    <text x="305" y="95" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">PyTorch Pair Ordering</text>
+    <text x="305" y="112" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#F472B6">NDCG@10 = 0.2107</text>
+
+    <!-- LambdaMART -->
+    <rect x="555" y="48" width="250" height="80" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5" />
+    <text x="570" y="75" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#34D399">Listwise LambdaMART ★</text>
+    <text x="570" y="95" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">LightGBM List Ranker</text>
+    <text x="570" y="112" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#34D399">NDCG@10 = 0.4512 (Best)</text>
+
+    <!-- MLOps / SHAP -->
+    <rect x="830" y="48" width="245" height="80" rx="8" fill="#1E293B" stroke="#8B5CF6" stroke-width="1" />
+    <text x="845" y="75" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#A78BFA">SHAP &amp; Monitoring</text>
+    <text x="845" y="95" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">TreeSHAP • PSI Drift</text>
+    <text x="845" y="112" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#A78BFA">MLflow + Prometheus</text>
+  </g>
 </svg>

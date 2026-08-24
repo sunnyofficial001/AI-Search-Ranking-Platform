@@ -1,12 +1,86 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300" viewBox="0 0 1000 300">
-  <rect width="1000" height="300" fill="#ffffff" />
-  <text x="40" y="40" font-family="Inter, Arial, sans-serif" font-size="18" fill="#0f172a">Ranking Pipeline</text>
-  <g fill="#eef2ff">
-    <rect x="60" y="80" width="180" height="80" rx="8" />
-    <text x="80" y="125" font-size="12">Candidate Retrieval (BM25)</text>
-    <rect x="300" y="80" width="180" height="80" rx="8" />
-    <text x="320" y="125" font-size="12">Feature Extraction (136 feats)</text>
-    <rect x="540" y="80" width="220" height="80" rx="8" />
-    <text x="560" y="125" font-size="12">Learning-to-Rank Models</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="320" viewBox="0 0 1000 320" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A0D14" />
+      <stop offset="100%" stop-color="#121826" />
+    </linearGradient>
+    <linearGradient id="card-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" opacity="0.9" />
+      <stop offset="100%" stop-color="#0F172A" opacity="0.9" />
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#06B6D4" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="320" fill="url(#bg)" stroke="#1E293B" stroke-width="2" />
+
+  <!-- Header -->
+  <text x="40" y="40" font-family="Inter, sans-serif" font-size="18" font-weight="700" fill="#F8FAFC">Multi-Stage Search &amp; Learning-to-Rank Execution Pipeline</text>
+  <text x="40" y="60" font-family="Inter, sans-serif" font-size="12" fill="#94A3B8">Sequential request processing from raw search query to diversity-reranked &amp; SHAP-attributed results</text>
+
+  <!-- Pipeline Nodes -->
+  <!-- Node 1 -->
+  <g transform="translate(40, 95)">
+    <rect width="165" height="180" rx="8" fill="url(#card-bg)" stroke="#06B6D4" stroke-width="1.5" />
+    <circle cx="25" cy="30" r="12" fill="#06B6D4" fill-opacity="0.2" />
+    <text x="25" y="34" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#38BDF8" text-anchor="middle">1</text>
+    <text x="45" y="34" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#F1F5F9">Query Input</text>
+    <text x="15" y="65" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Text tokenization &amp; Gemini query expansion.</text>
+    <rect x="12" y="130" width="141" height="32" rx="4" fill="#0A0D14" stroke="#334155" />
+    <text x="20" y="150" font-family="Inter, monospace" font-size="10" fill="#38BDF8">Input: "laptop 16GB"</text>
+  </g>
+
+  <path d="M210 185 H235" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Node 2 -->
+  <g transform="translate(240, 95)">
+    <rect width="165" height="180" rx="8" fill="url(#card-bg)" stroke="#3B82F6" stroke-width="1.5" />
+    <circle cx="25" cy="30" r="12" fill="#3B82F6" fill-opacity="0.2" />
+    <text x="25" y="34" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#60A5FA" text-anchor="middle">2</text>
+    <text x="45" y="34" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#F1F5F9">Candidate Fetch</text>
+    <text x="15" y="65" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">BM25 index filters candidate pool down to K=100.</text>
+    <rect x="12" y="130" width="141" height="32" rx="4" fill="#0A0D14" stroke="#334155" />
+    <text x="20" y="150" font-family="Inter, monospace" font-size="10" fill="#60A5FA">Latency &lt; 1.0 ms</text>
+  </g>
+
+  <path d="M410 185 H435" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Node 3 -->
+  <g transform="translate(440, 95)">
+    <rect width="165" height="180" rx="8" fill="url(#card-bg)" stroke="#E11D48" stroke-width="1.5" />
+    <circle cx="25" cy="30" r="12" fill="#E11D48" fill-opacity="0.2" />
+    <text x="25" y="34" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#FB7185" text-anchor="middle">3</text>
+    <text x="45" y="34" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#F1F5F9">Feature Hydration</text>
+    <text x="15" y="65" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Hydrates 136-dim feature vectors from Redis.</text>
+    <rect x="12" y="130" width="141" height="32" rx="4" fill="#0A0D14" stroke="#334155" />
+    <text x="20" y="150" font-family="Inter, monospace" font-size="10" fill="#FB7185">Redis Hit ~ 0.2 ms</text>
+  </g>
+
+  <path d="M610 185 H635" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Node 4 -->
+  <g transform="translate(640, 95)">
+    <rect width="165" height="180" rx="8" fill="url(#card-bg)" stroke="#10B981" stroke-width="1.5" />
+    <circle cx="25" cy="30" r="12" fill="#10B981" fill-opacity="0.2" />
+    <text x="25" y="34" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#34D399" text-anchor="middle">4</text>
+    <text x="45" y="34" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#F1F5F9">LambdaMART</text>
+    <text x="15" y="65" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Scores candidate list using Listwise LightGBM trees.</text>
+    <rect x="12" y="130" width="141" height="32" rx="4" fill="#0A0D14" stroke="#334155" />
+    <text x="20" y="150" font-family="Inter, monospace" font-size="10" fill="#34D399">NDCG@10 = 0.4512</text>
+  </g>
+
+  <path d="M810 185 H835" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Node 5 -->
+  <g transform="translate(840, 95)">
+    <rect width="120" height="180" rx="8" fill="url(#card-bg)" stroke="#8B5CF6" stroke-width="1.5" />
+    <circle cx="20" cy="30" r="12" fill="#8B5CF6" fill-opacity="0.2" />
+    <text x="20" y="34" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#A78BFA" text-anchor="middle">5</text>
+    <text x="40" y="34" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#F1F5F9">MMR + SHAP</text>
+    <text x="12" y="65" font-family="Inter, sans-serif" font-size="10" fill="#94A3B8">Diversity re-rank &amp; SHAP score attribution.</text>
+    <rect x="8" y="130" width="104" height="32" rx="4" fill="#0A0D14" stroke="#334155" />
+    <text x="14" y="150" font-family="Inter, monospace" font-size="9" fill="#A78BFA">Top-10 Output</text>
   </g>
 </svg>

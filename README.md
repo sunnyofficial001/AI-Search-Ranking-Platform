@@ -1,5 +1,7 @@
 # AI Search & Ranking Platform
 
+![AI Search & Ranking Platform Banner](assets/banner.svg)
+
 > Production-oriented Learning-to-Rank search platform combining candidate retrieval, multi-stage ranking, explainability, experimentation, and MLOps.
 
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.12-blue?logo=python)](https://python.org)
@@ -23,7 +25,7 @@
 * **Statistical Drift Monitoring**: Automated feature drift detection implementing PSI, Kolmogorov-Smirnov, Jensen-Shannon divergence, and Page-Hinkley algorithms.
 * **A/B Experimentation Framework**: Murmur3 user hashing, Thompson Sampling Multi-Armed Bandits, and statistical significance testing.
 * **Production MLOps Scaffolding**: MLflow tracking, Docker Compose orchestration, Prometheus telemetry, and GitHub Actions CI.
-* **Verified Test Coverage**: 119 backend unit tests (100% pass rate) + zero-error TypeScript build.
+* **Verified Test Coverage**: 124 backend unit tests (100% pass rate) + zero-error TypeScript build.
 
 ---
 
@@ -32,6 +34,12 @@
 Traditional keyword search engines (e.g. standard BM25 or TF-IDF) are effective at retrieving candidate documents containing matching query terms, but struggle to rank them accurately because they ignore complex multi-dimensional signals such as user engagement, content freshness, PageRank authority, and semantic relevance.
 
 This platform bridges information retrieval and machine learning by providing a **production-oriented Learning-to-Rank (LTR) architecture**. It ingests candidate pools from fast lexical retrievers, hydrates dense feature vectors, applies machine-learned ranking trees, optimizes result diversity via Maximal Marginal Relevance (MMR), and emits real-time SHAP explainability and drift telemetry.
+
+---
+
+## 🖥️ Interactive Dashboard Preview
+
+![Dashboard Showcase](assets/dashboard.svg)
 
 ---
 
@@ -55,33 +63,15 @@ Most machine learning repositories focus exclusively on offline model training i
 
 ## 📐 System Architecture
 
-```text
-User Query ("running shoes")
-    │
-    ▼
-Candidate Retrieval (BM25 / Inverted Index) ──► Narrows 600,000 docs to Top-100
-    │
-    ▼
-Feature Engineering & Redis Store ──► Hydrates 136-dim vectors (< 0.2ms hit)
-    │
-    ▼
-Multi-Stage Learning-to-Rank Models
-    ├── Pointwise XGBoost (Score Regressor)
-    ├── Pairwise RankNet (Preference Ordering)
-    └── Listwise LambdaMART (NDCG-optimized LightGBM)
-    │
-    ▼
-Stacked Ensemble & MMR Diversity Reranking
-    │
-    ▼
-Ranked Search Results + SHAP Attribution + Telemetry Logs
-```
+![System Architecture](assets/architecture.svg)
 
 *For complete technical details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).*
 
 ---
 
 ## 🔄 End-to-End Ranking Pipeline
+
+![Ranking Pipeline](assets/ranking_pipeline.svg)
 
 1. **User Query Submission**: Client sends query and optional algorithm weights to Express API gateway.
 2. **Candidate Retrieval**: BM25 inverted index retrieves Top-100 candidates, reducing search space by 99.9%.
@@ -108,6 +98,8 @@ Ranked Search Results + SHAP Attribution + Telemetry Logs
 
 ## 📊 Empirical Evaluation (MSLR-WEB10K Test Set)
 
+![Benchmark Results Chart](assets/benchmark_results.svg)
+
 All metrics below are strictly reproducible, computed across **2,000 test set queries** (MSLR-WEB10K Fold 1):
 
 | Model Architecture | Strategy | NDCG@1 | NDCG@3 | NDCG@5 | NDCG@10 (Primary) | MAP | MRR | P@10 | R@10 |
@@ -121,6 +113,8 @@ All metrics below are strictly reproducible, computed across **2,000 test set qu
 ---
 
 ## 🔍 Explainability & Observability
+
+![SHAP Waterfall Explanation](assets/shap_explanation.svg)
 
 * **SHAP Integration**: Integrates TreeSHAP (`shap.TreeExplainer`) to compute additive feature attributions for ranking predictions:
   $$f(x) = \phi_0 + \sum_{j=1}^M \phi_j$$
@@ -186,7 +180,7 @@ ai-search-platform/
 ├── assets/                   # Architecture SVGs & visual diagrams
 ├── reports/                  # Benchmark metrics JSON & SHAP plots
 ├── results/                  # Benchmark markdown reports
-├── tests/                    # 119 unit & integration tests (pytest)
+├── tests/                    # 124 unit & integration tests (pytest)
 ├── Dockerfile                # Production Python FastAPI container
 ├── Dockerfile.frontend       # Production Node.js frontend container
 ├── docker-compose.yml        # Multi-service infrastructure compose
@@ -244,7 +238,7 @@ docker compose ps
 ## 🧪 Testing & Validation
 
 ```bash
-# Run backend test suite (119 unit tests)
+# Run backend test suite (124 unit tests)
 python -m pytest tests/unit/ -v
 
 # Run TypeScript linter & type checker

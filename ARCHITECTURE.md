@@ -2,6 +2,8 @@
 
 > **AI Search & Ranking Platform** — Comprehensive architectural guide for candidate retrieval, feature engineering, multi-stage Learning-to-Rank (LTR), explainability, and observability.
 
+![System Architecture](assets/architecture.svg)
+
 ---
 
 ## 1. Overview & Core Engineering Principles
@@ -18,55 +20,9 @@ This platform implements a **decoupled, multi-stage retrieval and ranking pipeli
 
 ---
 
-## 2. High-Level System Architecture Diagram
+## 2. High-Level System Architecture Flow
 
-```
-                       ┌─────────────────────────────────────┐
-                       │           User Client               │
-                       │     React 19 / TypeScript SPA       │
-                       └──────────────────┬──────────────────┘
-                                          │ HTTP POST /api/search
-                                          ▼
-                       ┌─────────────────────────────────────┐
-                       │       Express API Gateway           │
-                       │      (Port 3000 Node.js API)        │
-                       └──────────────────┬──────────────────┘
-                                          │ Proxies /api/* to
-                                          ▼
-                       ┌─────────────────────────────────────┐
-                       │         FastAPI ML Service          │
-                       │      (Port 8000 Python Uvicorn)     │
-                       └──────────┬────────────────┬─────────┘
-                                  │                │
-            ┌─────────────────────┴──┐          ┌──┴─────────────────────┐
-            │ Candidate Retrieval    │          │  Feature Store Hydration│
-            │ (BM25 / Elasticsearch) │          │  (Redis Cache / SQLite) │
-            └─────────┬──────────────┘          └──────────┬─────────────┘
-                      │                                    │
-                      └─────────────────┬──────────────────┘
-                                        │ 100 Candidates + 136-dim Features
-                                        ▼
-                       ┌─────────────────────────────────────┐
-                       │     Multi-Stage Ranking Engine      │
-                       │  - Pointwise XGBoost Regressor      │
-                       │  - Pairwise PyTorch RankNet         │
-                       │  - Listwise LambdaMART (LightGBM)   │
-                       └──────────────────┬──────────────────┘
-                                          │
-                                          ▼
-                       ┌─────────────────────────────────────┐
-                       │    MMR Diversity & Re-ranking       │
-                       └──────────────────┬──────────────────┘
-                                          │
-                                          ▼
-                       ┌─────────────────────────────────────┐
-                       │  SHAP Attribution & Telemetry Logs │
-                       └─────────────────────────────────────┘
-```
-
----
-
-## 3. Detailed Data Flow & Request Lifecycle
+![Ranking Pipeline](assets/ranking_pipeline.svg)
 
 ```text
 User Search Request ("laptop 16GB RAM")
@@ -99,16 +55,16 @@ User Search Request ("laptop 16GB RAM")
 
 ---
 
-## 4. Subsystem Components & Engineering Boundaries
+## 3. Subsystem Components & Engineering Boundaries
 
-### 4.1 FastAPI Backend Engine (`backend/`)
+### 3.1 FastAPI Backend Engine (`backend/`)
 * **`backend/main.py`**: Application factory, CORS middleware, Prometheus monitoring middleware, database seeder lifespan trigger.
 * **`backend/api/routes_v2.py`**: REST API endpoints for search, recommendation, explainability, experiment tracking, and model registry.
 * **`backend/services/ranking_engine.py`**: Core algorithm implementations for BM25, TF-IDF, Cosine similarity, XGBoost, PyTorch RankNet, LambdaMART, and MMR.
 * **`backend/services/cache_service.py`**: Redis feature store caching layer with in-memory fallback.
 * **`backend/database/seeder.py`**: Idempotent database creation and canonical seeding.
 
-### 4.2 Frontend Web App (`src/`)
+### 3.2 Frontend Web App (`src/`)
 * **`src/components/SearchDashboard.tsx`**: Interactive query retrieval testing with real-time algorithm selection and score comparison.
 * **`src/components/RankingDashboard.tsx`**: Model training hub with parameter tuning controls (learning rate, tree count, batch size).
 * **`src/components/ShapDashboard.tsx`**: SHAP feature waterfall and global importance inspector.
@@ -117,7 +73,7 @@ User Search Request ("laptop 16GB RAM")
 
 ---
 
-## 5. Resilience, Failure Boundaries, and Fallback Strategy
+## 4. Resilience, Failure Boundaries, and Fallback Strategy
 
 | Failure Scenario | Secondary Fallback Strategy | User Impact |
 | :--- | :--- | :--- |
@@ -128,7 +84,7 @@ User Search Request ("laptop 16GB RAM")
 
 ---
 
-## 6. Scalability & Latency Considerations
+## 5. Scalability & Latency Considerations
 
 * **Candidate Space Reduction**: Scoring 600,000+ items directly takes $> 500\text{ ms}$. Restricting ML re-ranking to Top-100 candidates keeps ranking overhead under $< 5\text{ ms}$.
 * **Feature Vector Caching**: Caching 136-dimensional extracted features in Redis eliminates repetitive tokenization and IDF calculations for hot query streams, delivering a **600%+ QPS improvement**.
