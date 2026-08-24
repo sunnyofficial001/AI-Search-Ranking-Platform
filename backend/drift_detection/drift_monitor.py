@@ -14,13 +14,14 @@ Algorithms used:
 Industry patterns from: Evidently AI, WhyLabs, Arize, Fiddler.
 """
 
-import datetime
-import logging
 import math
+import time
+import logging
+import datetime
 import statistics
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from enum import Enum
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("drift_detection")
 
@@ -29,18 +30,17 @@ logger = logging.getLogger("drift_detection")
 # Drift Severity & Alert Levels
 # ---------------------------------------------------------------------------
 
-
 class DriftSeverity(str, Enum):
     NONE = "none"
-    WARNING = "warning"  # 0.1 < PSI <= 0.2
-    CRITICAL = "critical"  # PSI > 0.2 → retrain immediately
+    WARNING = "warning"          # 0.1 < PSI <= 0.2
+    CRITICAL = "critical"         # PSI > 0.2 → retrain immediately
     UNKNOWN = "unknown"
 
 
 @dataclass
 class DriftAlert:
     feature_name: str
-    drift_type: str  # "data_drift" | "concept_drift" | "prediction_drift"
+    drift_type: str               # "data_drift" | "concept_drift" | "prediction_drift"
     severity: DriftSeverity
     test_statistic: float
     threshold: float
@@ -53,8 +53,8 @@ class DriftAlert:
 # Statistical Tests
 # ---------------------------------------------------------------------------
 
-
 class StatisticalTests:
+
     @staticmethod
     def psi(
         reference: List[float],
@@ -182,7 +182,7 @@ class StatisticalTests:
 
         cumsum = 0.0
         min_cumsum = float("inf")
-        mean_estimate = statistics.mean(values[: max(1, len(values) // 2)])
+        mean_estimate = statistics.mean(values[:max(1, len(values) // 2)])
 
         for x in values:
             cumsum += x - mean_estimate - delta
@@ -198,7 +198,6 @@ class StatisticalTests:
 # Drift Monitor
 # ---------------------------------------------------------------------------
 
-
 class DriftMonitor:
     """
     Monitors feature distributions and model prediction distributions
@@ -207,138 +206,18 @@ class DriftMonitor:
 
     # Reference distributions (populated at startup from training data stats)
     _reference_stats: Dict[str, List[float]] = {
-        "bm25_score": [
-            0.5,
-            1.2,
-            0.8,
-            2.1,
-            0.3,
-            1.5,
-            0.9,
-            1.8,
-            0.6,
-            2.3,
-            1.1,
-            0.4,
-            1.7,
-            0.7,
-            2.0,
-            0.2,
-            1.4,
-            0.8,
-            1.9,
-            1.0,
-        ],
-        "tfidf_cosine": [
-            0.1,
-            0.4,
-            0.2,
-            0.6,
-            0.3,
-            0.5,
-            0.15,
-            0.45,
-            0.25,
-            0.55,
-            0.12,
-            0.38,
-            0.22,
-            0.52,
-            0.35,
-            0.18,
-            0.42,
-            0.28,
-            0.48,
-            0.32,
-        ],
-        "ctr_7d": [
-            0.05,
-            0.12,
-            0.08,
-            0.15,
-            0.07,
-            0.10,
-            0.06,
-            0.13,
-            0.09,
-            0.11,
-            0.04,
-            0.14,
-            0.07,
-            0.10,
-            0.08,
-            0.12,
-            0.05,
-            0.09,
-            0.11,
-            0.06,
-        ],
-        "freshness_score": [
-            0.7,
-            0.9,
-            0.8,
-            0.6,
-            0.85,
-            0.75,
-            0.95,
-            0.65,
-            0.80,
-            0.88,
-            0.72,
-            0.92,
-            0.78,
-            0.68,
-            0.82,
-            0.77,
-            0.87,
-            0.73,
-            0.93,
-            0.83,
-        ],
-        "popularity_score": [
-            70,
-            90,
-            80,
-            95,
-            75,
-            85,
-            92,
-            78,
-            88,
-            82,
-            79,
-            91,
-            76,
-            86,
-            83,
-            89,
-            77,
-            93,
-            81,
-            87,
-        ],
-        "model_score": [
-            0.3,
-            0.5,
-            0.6,
-            0.4,
-            0.7,
-            0.55,
-            0.45,
-            0.65,
-            0.35,
-            0.75,
-            0.5,
-            0.6,
-            0.4,
-            0.7,
-            0.55,
-            0.45,
-            0.65,
-            0.35,
-            0.75,
-            0.5,
-        ],
+        "bm25_score":      [0.5, 1.2, 0.8, 2.1, 0.3, 1.5, 0.9, 1.8, 0.6, 2.3,
+                            1.1, 0.4, 1.7, 0.7, 2.0, 0.2, 1.4, 0.8, 1.9, 1.0],
+        "tfidf_cosine":    [0.1, 0.4, 0.2, 0.6, 0.3, 0.5, 0.15, 0.45, 0.25, 0.55,
+                            0.12, 0.38, 0.22, 0.52, 0.35, 0.18, 0.42, 0.28, 0.48, 0.32],
+        "ctr_7d":          [0.05, 0.12, 0.08, 0.15, 0.07, 0.10, 0.06, 0.13, 0.09, 0.11,
+                            0.04, 0.14, 0.07, 0.10, 0.08, 0.12, 0.05, 0.09, 0.11, 0.06],
+        "freshness_score": [0.7, 0.9, 0.8, 0.6, 0.85, 0.75, 0.95, 0.65, 0.80, 0.88,
+                            0.72, 0.92, 0.78, 0.68, 0.82, 0.77, 0.87, 0.73, 0.93, 0.83],
+        "popularity_score":[70, 90, 80, 95, 75, 85, 92, 78, 88, 82, 79, 91, 76, 86,
+                            83, 89, 77, 93, 81, 87],
+        "model_score":     [0.3, 0.5, 0.6, 0.4, 0.7, 0.55, 0.45, 0.65, 0.35, 0.75,
+                            0.5, 0.6, 0.4, 0.7, 0.55, 0.45, 0.65, 0.35, 0.75, 0.5],
     }
 
     _alerts_history: List[DriftAlert] = []
@@ -353,7 +232,7 @@ class DriftMonitor:
         cls._current_window[feature_name].append(value)
         # Keep rolling window
         if len(cls._current_window[feature_name]) > cls._window_size:
-            cls._current_window[feature_name] = cls._current_window[feature_name][-cls._window_size :]
+            cls._current_window[feature_name] = cls._current_window[feature_name][-cls._window_size:]
 
     @classmethod
     def detect_feature_drift(cls, feature_name: str, current_values: Optional[List[float]] = None) -> DriftAlert:

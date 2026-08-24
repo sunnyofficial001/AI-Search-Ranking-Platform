@@ -14,10 +14,13 @@ Pattern: MLflow Model Registry, Google Vertex AI Model Registry, SageMaker Model
 
 import datetime
 import logging
+import random
 import time
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+
+from backend.core.config import settings
 
 logger = logging.getLogger("model_registry")
 
@@ -25,9 +28,9 @@ logger = logging.getLogger("model_registry")
 class ModelStage(str, Enum):
     DEVELOPMENT = "development"
     STAGING = "staging"
-    CANARY = "canary"  # 5-10% traffic
-    PRODUCTION = "production"  # 100% traffic
-    SHADOW = "shadow"  # Silent side-by-side (no serving)
+    CANARY = "canary"          # 5-10% traffic
+    PRODUCTION = "production"   # 100% traffic
+    SHADOW = "shadow"          # Silent side-by-side (no serving)
     ARCHIVED = "archived"
     ROLLED_BACK = "rolled_back"
 
@@ -48,7 +51,7 @@ class ModelVersion:
     model_id: str
     model_name: str
     model_type: ModelType
-    version: str  # Semantic: "1.2.3"
+    version: str                    # Semantic: "1.2.3"
     stage: ModelStage
     description: str
     # Training provenance
@@ -73,7 +76,7 @@ class ModelVersion:
 class RetrainingTrigger:
     trigger_id: str
     model_name: str
-    trigger_type: str  # "drift" | "schedule" | "performance" | "manual"
+    trigger_type: str    # "drift" | "schedule" | "performance" | "manual"
     triggered_at: str
     trigger_reason: str
     drift_metric: Optional[str] = None
@@ -91,8 +94,8 @@ class ModelRegistry:
 
     @classmethod
     def _seed_registry(cls):
-        """Seed with canonical production models for demo."""
-        if cls._models:
+        """Seed reference models only in local testing."""
+        if cls._models or not settings.is_testing:
             return
 
         models = [
@@ -107,12 +110,8 @@ class ModelRegistry:
                 training_dataset="MSLR-WEB10K-Fold1",
                 training_duration_seconds=847.3,
                 metrics={
-                    "ndcg@5": 0.882,
-                    "ndcg@10": 0.921,
-                    "map": 0.834,
-                    "mrr": 0.892,
-                    "precision@5": 0.801,
-                    "recall@5": 0.843,
+                    "ndcg@5": 0.882, "ndcg@10": 0.921, "map": 0.834,
+                    "mrr": 0.892, "precision@5": 0.801, "recall@5": 0.843,
                     "err@10": 0.741,
                 },
                 canary_traffic_pct=100.0,
@@ -131,12 +130,8 @@ class ModelRegistry:
                 training_dataset="MSLR-WEB10K-Fold1",
                 training_duration_seconds=2340.1,
                 metrics={
-                    "ndcg@5": 0.756,
-                    "ndcg@10": 0.812,
-                    "map": 0.724,
-                    "mrr": 0.783,
-                    "precision@5": 0.651,
-                    "recall@5": 0.782,
+                    "ndcg@5": 0.756, "ndcg@10": 0.812, "map": 0.724,
+                    "mrr": 0.783, "precision@5": 0.651, "recall@5": 0.782,
                 },
                 canary_traffic_pct=0.0,
                 serving_latency_p99_ms=42.7,
@@ -154,12 +149,8 @@ class ModelRegistry:
                 training_dataset="MSLR-WEB10K-Fold1",
                 training_duration_seconds=2891.5,
                 metrics={
-                    "ndcg@5": 0.841,
-                    "ndcg@10": 0.879,
-                    "map": 0.812,
-                    "mrr": 0.856,
-                    "precision@5": 0.781,
-                    "recall@5": 0.821,
+                    "ndcg@5": 0.841, "ndcg@10": 0.879, "map": 0.812,
+                    "mrr": 0.856, "precision@5": 0.781, "recall@5": 0.821,
                 },
                 canary_traffic_pct=10.0,
                 serving_latency_p99_ms=38.2,
@@ -177,11 +168,8 @@ class ModelRegistry:
                 training_dataset="UserInteractionLog-Q1-2026",
                 training_duration_seconds=412.8,
                 metrics={
-                    "rmse": 0.412,
-                    "precision@5": 0.851,
-                    "recall@5": 0.783,
-                    "ndcg@10": 0.872,
-                    "hit_rate@10": 0.921,
+                    "rmse": 0.412, "precision@5": 0.851, "recall@5": 0.783,
+                    "ndcg@10": 0.872, "hit_rate@10": 0.921,
                 },
                 canary_traffic_pct=100.0,
                 serving_latency_p99_ms=8.1,
@@ -199,10 +187,8 @@ class ModelRegistry:
                 training_dataset="UserInteractionLog-Q1-2026",
                 training_duration_seconds=7820.0,
                 metrics={
-                    "precision@5": 0.881,
-                    "recall@10": 0.912,
-                    "ndcg@10": 0.903,
-                    "auc": 0.942,
+                    "precision@5": 0.881, "recall@10": 0.912,
+                    "ndcg@10": 0.903, "auc": 0.942,
                 },
                 canary_traffic_pct=0.0,
                 serving_latency_p99_ms=21.3,
@@ -220,12 +206,8 @@ class ModelRegistry:
                 training_dataset="MSLR-WEB10K-Fold1",
                 training_duration_seconds=1240.0,
                 metrics={
-                    "ndcg@5": 0.901,
-                    "ndcg@10": 0.934,
-                    "map": 0.871,
-                    "mrr": 0.908,
-                    "precision@5": 0.832,
-                    "recall@5": 0.871,
+                    "ndcg@5": 0.901, "ndcg@10": 0.934, "map": 0.871,
+                    "mrr": 0.908, "precision@5": 0.832, "recall@5": 0.871,
                     "err@10": 0.783,
                 },
                 canary_traffic_pct=100.0,
@@ -276,11 +258,9 @@ class ModelRegistry:
             model.canary_traffic_pct = 100.0
             # Auto-archive previous production model of same type
             for other_id, other_model in cls._models.items():
-                if (
-                    other_id != model_id
-                    and other_model.model_type == model.model_type
-                    and other_model.stage == ModelStage.PRODUCTION
-                ):
+                if (other_id != model_id and
+                    other_model.model_type == model.model_type and
+                    other_model.stage == ModelStage.PRODUCTION):
                     other_model.stage = ModelStage.ARCHIVED
                     other_model.archived_at = datetime.datetime.utcnow().isoformat()
                     logger.info(f"[Registry] Auto-archived previous production model: {other_id}")
@@ -316,7 +296,8 @@ class ModelRegistry:
         """Return the current production champion for a model type."""
         cls._seed_registry()
         production_models = [
-            m for m in cls._models.values() if m.model_type == model_type and m.stage == ModelStage.PRODUCTION
+            m for m in cls._models.values()
+            if m.model_type == model_type and m.stage == ModelStage.PRODUCTION
         ]
         if not production_models:
             return None
@@ -341,8 +322,7 @@ class ModelRegistry:
             delta = val_b - val_a
             winner = b.model_id if delta > 0 else (a.model_id if delta < 0 else "tie")
             comparison[metric] = {
-                "model_a": val_a,
-                "model_b": val_b,
+                "model_a": val_a, "model_b": val_b,
                 "delta": round(delta, 4),
                 "delta_pct": round(delta / max(val_a, 1e-10) * 100, 2),
                 "winner": winner,
@@ -359,8 +339,8 @@ class ModelRegistry:
             "overall_winner": overall_winner,
             "recommendation": (
                 f"Promote {overall_winner} to production."
-                if overall_winner != "tie"
-                else "Models are equivalent — consider latency as tiebreaker."
+                if overall_winner != "tie" else
+                "Models are equivalent — consider latency as tiebreaker."
             ),
         }
 

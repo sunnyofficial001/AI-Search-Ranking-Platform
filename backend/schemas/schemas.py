@@ -1,8 +1,6 @@
+from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import List, Dict, Any, Optional
 import datetime
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, EmailStr
-
 
 # User Schemas
 class UserBase(BaseModel):
@@ -10,13 +8,9 @@ class UserBase(BaseModel):
     username: str
     email: EmailStr
 
-
 class UserResponse(UserBase):
+    model_config = ConfigDict(from_attributes=True)
     created_at: datetime.datetime
-
-    class Config:
-        from_attributes = True
-
 
 # Product Schemas
 class ProductBase(BaseModel):
@@ -29,19 +23,14 @@ class ProductBase(BaseModel):
     freshness: float
     engagement: float
 
-
 class ProductResponse(ProductBase):
+    model_config = ConfigDict(from_attributes=True)
     created_at: datetime.datetime
-
-    class Config:
-        from_attributes = True
-
 
 # Search Schemas
 class SearchRequest(BaseModel):
     query: str
     weights: Optional[Dict[str, float]] = None
-
 
 class SearchResultItem(BaseModel):
     productId: str
@@ -53,12 +42,10 @@ class SearchResultItem(BaseModel):
     relevanceLabel: int
     features: Dict[str, float]
 
-
 class SearchResponse(BaseModel):
     query: str
     expandedQuery: str
     results: List[SearchResultItem]
-
 
 # Recommendation Schemas
 class RecommendRequest(BaseModel):
@@ -70,7 +57,6 @@ class RecommendRequest(BaseModel):
     latentDim: Optional[int] = 3
     lr: Optional[float] = 0.05
 
-
 class RecommendItem(BaseModel):
     productId: str
     title: str
@@ -79,24 +65,20 @@ class RecommendItem(BaseModel):
     type: str
     breakdown: str
 
-
 class RecommendResponse(BaseModel):
     type: str
     results: List[RecommendItem]
     losses: Optional[List[Dict[str, float]]] = None
-
 
 # Explainability Schemas
 class ExplainRequest(BaseModel):
     productId: str
     query: str
 
-
 class ContributionItem(BaseModel):
     feature: str
     value: float
     shapleyValue: float
-
 
 class ExplainResponse(BaseModel):
     productId: str
@@ -105,14 +87,12 @@ class ExplainResponse(BaseModel):
     finalScore: float
     contributions: List[ContributionItem]
 
-
 # Experiment Tracking Schemas
 class ExperimentRunRequest(BaseModel):
     algorithm: str
     learningRate: Optional[float] = None
     epochs: Optional[int] = None
     nEstimators: Optional[int] = None
-
 
 class ExperimentRunResponse(BaseModel):
     runId: str
@@ -122,7 +102,6 @@ class ExperimentRunResponse(BaseModel):
     parameters: Dict[str, Any]
     metrics: Dict[str, float]
     status: str
-
 
 class ExperimentDashboardResponse(BaseModel):
     runs: List[ExperimentRunResponse]

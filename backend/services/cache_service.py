@@ -1,7 +1,7 @@
+import os
 import json
 import logging
-import os
-from typing import Any, Optional
+from typing import Optional, Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cache_service")
@@ -9,7 +9,6 @@ logger = logging.getLogger("cache_service")
 # Try to import redis structure cleanly
 try:
     import redis
-
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
     REDIS_DB = int(os.getenv("REDIS_DB", 0))
@@ -22,17 +21,16 @@ try:
         db=REDIS_DB,
         password=REDIS_PASSWORD,
         decode_responses=True,
-        socket_timeout=2.0,
+        socket_timeout=2.0
     )
     # Check connect status
     redis_client.ping()
     REDIS_AVAILABLE = True
     logger.info("Connected to Redis server successfully.")
 except Exception as e:
-    logger.warn(f"Redis not available or connection failed, falling back to local memory cache: {e}")
+    logger.warning(f"Redis not available or connection failed, falling back to local memory cache: {e}")
     REDIS_AVAILABLE = False
     redis_client = None
-
 
 # Local high-performance in-memory cache fallback for sandbox/minimal dependencies
 class InMemCache:
@@ -49,9 +47,7 @@ class InMemCache:
         if key in self._store:
             del self._store[key]
 
-
 _local_cache = InMemCache()
-
 
 class CacheService:
     @staticmethod

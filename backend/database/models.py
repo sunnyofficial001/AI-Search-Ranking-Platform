@@ -1,10 +1,7 @@
 import datetime
-
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
-
 from backend.database.connection import Base
-
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -102,3 +99,4 @@ class SearchQueryLogModel(Base):
     weights_applied = Column(JSON, nullable=True)
     execution_time_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+

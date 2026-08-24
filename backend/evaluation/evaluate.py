@@ -6,7 +6,10 @@ and the new query-grouped evaluation that uses ranking_metrics.py.
 """
 
 import math
+import numpy as np
 from typing import Dict, List
+
+from backend.evaluation.ranking_metrics import compute_all_metrics
 
 
 class Evaluator:
@@ -19,7 +22,7 @@ class Evaluator:
         """DCG@k using the standard gain formula: sum((2^rel - 1) / log2(i+2))."""
         dcg = 0.0
         for i, rel in enumerate(relevances[:k]):
-            dcg += (2**rel - 1) / math.log2(i + 2)
+            dcg += (2 ** rel - 1) / math.log2(i + 2)
         return dcg
 
     @staticmethod
@@ -34,7 +37,12 @@ class Evaluator:
 
     @staticmethod
     def calculate_map(ranked: List[float], num_relevant: int) -> float:
-        """Mean Average Precision given a ranked list and total relevant count."""
+        """Mean Average Precision given a ranked list and total relevant count.
+
+        Accumulates precision only up to num_relevant hits found, then stops.
+        This matches the standard AP definition: sum of P@k over relevant positions
+        divided by total relevant documents.
+        """
         if num_relevant == 0:
             return 0.0
         precision_sum = 0.0
@@ -43,6 +51,9 @@ class Evaluator:
             if rel > 0:
                 hits += 1
                 precision_sum += hits / (i + 1)
+                if hits >= num_relevant:
+                    # All relevant documents accounted for; stop.
+                    break
         return precision_sum / num_relevant
 
     # ── MRR ───────────────────────────────────────────────────────────────────
@@ -65,26 +76,34 @@ class Evaluator:
 
     @staticmethod
     def calculate_recall_at_k(ranked: List[float], num_relevant: int, k: int) -> float:
-        """Recall@k — fraction of relevant documents found in top-k."""
+        """Recall@k — fraction of relevant documents found in top-k.
+
+        Clamped to [0, 1] — retrieved count cannot exceed num_relevant in a
+        well-formed evaluation set; clamping guards against mis-specified
+        num_relevant values.
+        """
         if num_relevant == 0:
             return 0.0
         top_k = ranked[:k]
-        return sum(1 for r in top_k if r > 0) / num_relevant
+        hits = sum(1 for r in top_k if r > 0)
+        return min(1.0, hits / num_relevant)
 
     # ── Full Suite ────────────────────────────────────────────────────────────
 
     @staticmethod
     def run_full_suite(
-        ranked_relevances: List[float], ideal_relevances: List[float], qids: list = None
+        ranked_relevances: List[float],
+        ideal_relevances: List[float],
+        qids: list = None
     ) -> Dict[str, float]:
         """Compute NDCG@5, NDCG@10, MAP, MRR, P@5, R@5 for a single query."""
         num_relevant = sum(1 for r in ideal_relevances if r > 0)
 
         return {
-            "ndcg5": round(Evaluator.calculate_ndcg(ranked_relevances, ideal_relevances, 5), 4),
-            "ndcg10": round(Evaluator.calculate_ndcg(ranked_relevances, ideal_relevances, 10), 4),
-            "map": round(Evaluator.calculate_map(ranked_relevances, num_relevant), 4),
-            "mrr": round(Evaluator.calculate_mrr(ranked_relevances), 4),
+            "ndcg5":      round(Evaluator.calculate_ndcg(ranked_relevances, ideal_relevances, 5), 4),
+            "ndcg10":     round(Evaluator.calculate_ndcg(ranked_relevances, ideal_relevances, 10), 4),
+            "map":        round(Evaluator.calculate_map(ranked_relevances, num_relevant), 4),
+            "mrr":        round(Evaluator.calculate_mrr(ranked_relevances), 4),
             "precision5": round(Evaluator.calculate_precision_at_k(ranked_relevances, 5), 4),
-            "recall5": round(Evaluator.calculate_recall_at_k(ranked_relevances, num_relevant, 5), 4),
+            "recall5":    round(Evaluator.calculate_recall_at_k(ranked_relevances, num_relevant, 5), 4),
         }

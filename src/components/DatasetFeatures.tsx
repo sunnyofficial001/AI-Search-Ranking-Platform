@@ -13,49 +13,61 @@ export default function DatasetFeatures() {
   const [pipelineLogs, setPipelineLogs] = useState<string[]>([]);
   const [storeRecords, setStoreRecords] = useState<FeatureStoreRecord[]>([]);
 
-  const startPipelineSimulator = () => {
+  const startPipelineRun = async () => {
     setPipelineState('downloading');
     setPipelineProgress(10);
     setPipelineLogs([
-      '[INFO] Initiating MSLR-WEB10K dataset query preprocessing pipeline.',
-      '[INGESTION] Downloading raw partition (Fold 1: train.txt)...',
-      '[INGESTION] Connected to Microsoft Research repository: downloading 1.2MB compressed header configurations...'
+      '[INFO] Requesting backend preprocessing pipeline.',
+      '[INGESTION] Submitting feature-store job to the API layer...',
+      '[INGESTION] Waiting for the backend pipeline response...'
     ]);
 
-    // Stage 1: Ingestion simulation timeout (1.5 seconds)
-    setTimeout(() => {
+    try {
       setPipelineState('processing');
-      setPipelineProgress(50);
+      setPipelineProgress(45);
+
+      const pipelineRes = await fetch('/api/pipeline/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipeline_name: 'feature_computation',
+          batch_size: 100,
+          dry_run: false,
+        }),
+      });
+
+      const pipelineData = await pipelineRes.json();
+      if (!pipelineRes.ok) {
+        throw new Error(pipelineData.detail || pipelineData.error || 'Pipeline run failed');
+      }
+
+      setPipelineProgress(80);
       setPipelineLogs(prev => [
         ...prev,
-        '[INGESTION] Download complete. 10,000 document matching listings parsed.',
-        '[PIPELINE] Converting SVMLight query relevance labels (0 to 4)...',
-        '[FEATURE ENGINEERING] Initializing TF-IDF vector matrices across vocab schemas...',
-        '[FEATURE ENGINEERING] Formulating BM25 indexes with parameter metrics: k1 = 1.2, b = 0.75...',
-        '[FEATURE ENGINEERING] Multiplying Cosine Similarity profiles on categories & reviews...',
-        '[FEATURE_STORE] Registering engineered vectors inside centralized feature cache...'
+        `[PIPELINE] Run ${pipelineData.run_id} processed ${pipelineData.rows_processed} rows.`,
+        '[FEATURE_STORE] Refreshing catalog view from the backend...'
       ]);
-    }, 1500);
 
-    // Stage 2: Processing committed timeout (3.4 seconds)
-    setTimeout(async () => {
+      const res = await fetch('/api/feature-store');
+      const data = await res.json();
+      setStoreRecords(data);
+
       setPipelineState('done');
       setPipelineProgress(100);
       setPipelineLogs(prev => [
         ...prev,
-        '[SUCCESS] Preprocessing completed cleanly.',
-        '[SUCCESS] Committed 10 production-quality featured profiles to the centralized Feature Store PostgreSQL simulated registry cache.'
+        '[SUCCESS] Backend preprocessing completed successfully.',
+        `[SUCCESS] Feature store refreshed with ${data.length ?? 0} records.`
       ]);
-
-      // Retrieve Feature Store data from server DB simulation
-      try {
-        const res = await fetch('/api/feature-store');
-        const data = await res.json();
-        setStoreRecords(data);
-      } catch (err) {
-        console.error('Error fetching simulated Feature Store details:', err);
-      }
-    }, 3200);
+    } catch (err: any) {
+      setPipelineState('done');
+      setPipelineProgress(100);
+      setPipelineLogs(prev => [
+        ...prev,
+        `[ERROR] ${err.message || 'Feature store pipeline unavailable.'}`
+      ]);
+      console.error('Error running feature store pipeline:', err);
+    }
   };
 
   return (
@@ -67,7 +79,7 @@ export default function DatasetFeatures() {
           MSLR-WEB10K Preprocessing & Advanced Feature Store Registry
         </h2>
         <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-          Simulate downloading Microsoft Research Search Ranking sets (MSLR-WEB10K). Execute advanced feature engineering loops (BM25, TF-IDF, Cosine Similarity, CTR decays, Freshness profiles) and commit them into a relational Feature Store database.
+          Request backend preprocessing for the Microsoft Research Search Ranking set (MSLR-WEB10K). The backend computes feature-engineering outputs and publishes them into the feature store when the environment is configured for it.
         </p>
 
         {/* Dataset Metadata brief */}
@@ -110,17 +122,17 @@ export default function DatasetFeatures() {
             Trigger Preprocessing Pipeline
           </h3>
           <p className="text-slate-400 text-xs leading-normal">
-            Initiate automated download and feature transformations workflows to register data columns.
+            Request a backend feature-store refresh. This endpoint is test-only unless the backend is configured for local testing.
           </p>
 
           <button
-            onClick={startPipelineSimulator}
+            onClick={startPipelineRun}
             disabled={pipelineState === 'downloading' || pipelineState === 'processing'}
             className="w-full bg-cyan-500 hover:bg-cyan-600 text-[#0A0D14] font-bold text-xs py-2.5 rounded transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.15)] uppercase"
             id="start-pipeline-btn"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${pipelineState === 'downloading' || pipelineState === 'processing' ? 'animate-spin' : ''}`} />
-            {pipelineState === 'idle' ? 'Invoke ETL Ingest' : pipelineState === 'done' ? 'Re-run ETL Ingest' : 'Running ETL...'}
+            {pipelineState === 'idle' ? 'Run Backend ETL' : pipelineState === 'done' ? 'Re-run Backend ETL' : 'Running ETL...'}
           </button>
 
           {pipelineState !== 'idle' && (
@@ -169,7 +181,7 @@ export default function DatasetFeatures() {
           {storeRecords.length === 0 ? (
             <div className="border border-white/5 rounded-lg p-12 text-center text-slate-500">
               <p className="text-xs">Feature store is uninitialized.</p>
-              <p className="text-[11px] text-slate-600 mt-1">Please launch the ETL Ingestion pipeline using the controller on the left side to register catalog features.</p>
+              <p className="text-[11px] text-slate-600 mt-1">Please run the backend ETL request using the controller on the left side to register catalog features.</p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-white/5 rounded-lg">

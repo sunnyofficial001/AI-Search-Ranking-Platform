@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js Environment
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-size: 18
           cache: 'npm'
 
       - name: Install Node Dependencies
@@ -44,7 +44,7 @@ jobs:
       - name: Install Microservice Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements-dev.txt
+          pip install -r backend/requirements.txt
 
       - name: Run Python Pytest Suite
         run: |

@@ -10,10 +10,10 @@ Features: 136 per document (indices 1–136)
 Labels: 0-4 graded relevance
 """
 
-import logging
 import os
-from collections import Counter
-from typing import Any, Dict, Generator, List, Tuple
+import logging
+from typing import Generator, Tuple, List, Dict, Any
+from collections import defaultdict, Counter
 
 import numpy as np
 
@@ -27,148 +27,71 @@ NUM_FEATURES = 136
 # Human-readable feature names for MSLR-WEB10K (136 features)
 # Reference: https://www.microsoft.com/en-us/research/project/mslr/
 FEATURE_NAMES: Dict[int, str] = {
-    1: "TF_body",
-    2: "TF_anchor",
-    3: "TF_title",
-    4: "TF_url",
-    5: "TF_whole_doc",
-    6: "IDF_body",
-    7: "IDF_anchor",
-    8: "IDF_title",
-    9: "IDF_url",
-    10: "IDF_whole_doc",
-    11: "TF_IDF_body",
-    12: "TF_IDF_anchor",
-    13: "TF_IDF_title",
-    14: "TF_IDF_url",
-    15: "TF_IDF_whole_doc",
-    16: "doc_len_body",
-    17: "doc_len_anchor",
-    18: "doc_len_title",
-    19: "doc_len_url",
-    20: "doc_len_whole_doc",
-    21: "TF_normalized_body",
-    22: "TF_normalized_anchor",
-    23: "TF_normalized_title",
-    24: "TF_normalized_url",
+    1:  "TF_body",         2:  "TF_anchor",       3:  "TF_title",
+    4:  "TF_url",          5:  "TF_whole_doc",
+    6:  "IDF_body",        7:  "IDF_anchor",       8:  "IDF_title",
+    9:  "IDF_url",         10: "IDF_whole_doc",
+    11: "TF_IDF_body",     12: "TF_IDF_anchor",    13: "TF_IDF_title",
+    14: "TF_IDF_url",      15: "TF_IDF_whole_doc",
+    16: "doc_len_body",    17: "doc_len_anchor",    18: "doc_len_title",
+    19: "doc_len_url",     20: "doc_len_whole_doc",
+    21: "TF_normalized_body",      22: "TF_normalized_anchor",
+    23: "TF_normalized_title",     24: "TF_normalized_url",
     25: "TF_normalized_whole_doc",
-    26: "sum_TF_body",
-    27: "sum_TF_anchor",
-    28: "sum_TF_title",
-    29: "sum_TF_url",
-    30: "sum_TF_whole_doc",
-    31: "min_TF_body",
-    32: "min_TF_anchor",
-    33: "min_TF_title",
-    34: "min_TF_url",
-    35: "min_TF_whole_doc",
-    36: "max_TF_body",
-    37: "max_TF_anchor",
-    38: "max_TF_title",
-    39: "max_TF_url",
-    40: "max_TF_whole_doc",
-    41: "mean_TF_body",
-    42: "mean_TF_anchor",
-    43: "mean_TF_title",
-    44: "mean_TF_url",
-    45: "mean_TF_whole_doc",
-    46: "covered_query_term_ratio_body",
-    47: "covered_query_term_ratio_anchor",
-    48: "covered_query_term_ratio_title",
-    49: "covered_query_term_ratio_url",
+    26: "sum_TF_body",       27: "sum_TF_anchor",     28: "sum_TF_title",
+    29: "sum_TF_url",        30: "sum_TF_whole_doc",
+    31: "min_TF_body",       32: "min_TF_anchor",     33: "min_TF_title",
+    34: "min_TF_url",        35: "min_TF_whole_doc",
+    36: "max_TF_body",       37: "max_TF_anchor",     38: "max_TF_title",
+    39: "max_TF_url",        40: "max_TF_whole_doc",
+    41: "mean_TF_body",      42: "mean_TF_anchor",    43: "mean_TF_title",
+    44: "mean_TF_url",       45: "mean_TF_whole_doc",
+    46: "covered_query_term_ratio_body",    47: "covered_query_term_ratio_anchor",
+    48: "covered_query_term_ratio_title",   49: "covered_query_term_ratio_url",
     50: "covered_query_term_ratio_whole_doc",
-    51: "covered_query_term_num_body",
-    52: "covered_query_term_num_anchor",
-    53: "covered_query_term_num_title",
-    54: "covered_query_term_num_url",
+    51: "covered_query_term_num_body",      52: "covered_query_term_num_anchor",
+    53: "covered_query_term_num_title",     54: "covered_query_term_num_url",
     55: "covered_query_term_num_whole_doc",
-    56: "stream_length_body",
-    57: "stream_length_anchor",
-    58: "stream_length_title",
-    59: "stream_length_url",
+    56: "stream_length_body",    57: "stream_length_anchor",
+    58: "stream_length_title",   59: "stream_length_url",
     60: "stream_length_whole_doc",
-    61: "idf_sum_body",
-    62: "idf_sum_anchor",
-    63: "idf_sum_title",
-    64: "idf_sum_url",
-    65: "idf_sum_whole_doc",
-    66: "idf_min_body",
-    67: "idf_min_anchor",
-    68: "idf_min_title",
-    69: "idf_min_url",
-    70: "idf_min_whole_doc",
-    71: "idf_max_body",
-    72: "idf_max_anchor",
-    73: "idf_max_title",
-    74: "idf_max_url",
-    75: "idf_max_whole_doc",
-    76: "idf_mean_body",
-    77: "idf_mean_anchor",
-    78: "idf_mean_title",
-    79: "idf_mean_url",
-    80: "idf_mean_whole_doc",
-    81: "idf_variance_body",
-    82: "idf_variance_anchor",
-    83: "idf_variance_title",
-    84: "idf_variance_url",
-    85: "idf_variance_whole_doc",
-    86: "tf_idf_sum_body",
-    87: "tf_idf_sum_anchor",
-    88: "tf_idf_sum_title",
-    89: "tf_idf_sum_url",
-    90: "tf_idf_sum_whole_doc",
-    91: "tf_idf_min_body",
-    92: "tf_idf_min_anchor",
-    93: "tf_idf_min_title",
-    94: "tf_idf_min_url",
-    95: "tf_idf_min_whole_doc",
-    96: "tf_idf_max_body",
-    97: "tf_idf_max_anchor",
-    98: "tf_idf_max_title",
-    99: "tf_idf_max_url",
-    100: "tf_idf_max_whole_doc",
-    101: "tf_idf_mean_body",
-    102: "tf_idf_mean_anchor",
-    103: "tf_idf_mean_title",
-    104: "tf_idf_mean_url",
-    105: "tf_idf_mean_whole_doc",
-    106: "bool_query_body",
-    107: "bool_query_anchor",
-    108: "bool_query_title",
-    109: "bool_query_url",
-    110: "bool_query_whole_doc",
-    111: "LM_body",
-    112: "LM_anchor",
-    113: "LM_title",
-    114: "LM_url",
-    115: "LM_whole_doc",
-    116: "LM_linear_body",
-    117: "LM_linear_anchor",
-    118: "LM_linear_title",
-    119: "LM_linear_url",
-    120: "LM_linear_whole_doc",
-    121: "LM_dir_body",
-    122: "LM_dir_anchor",
-    123: "LM_dir_title",
-    124: "LM_dir_url",
-    125: "LM_dir_whole_doc",
-    126: "BM25_body",
-    127: "BM25_anchor",
-    128: "BM25_title",
-    129: "BM25_url",
-    130: "BM25_whole_doc",
-    131: "LMIR_ABS_body",
-    132: "LMIR_ABS_anchor",
-    133: "LMIR_ABS_title",
-    134: "LMIR_ABS_url",
-    135: "LMIR_ABS_whole_doc",
-    136: "SiteMap_quality",
+    61: "idf_sum_body",          62: "idf_sum_anchor",     63: "idf_sum_title",
+    64: "idf_sum_url",           65: "idf_sum_whole_doc",
+    66: "idf_min_body",          67: "idf_min_anchor",     68: "idf_min_title",
+    69: "idf_min_url",           70: "idf_min_whole_doc",
+    71: "idf_max_body",          72: "idf_max_anchor",     73: "idf_max_title",
+    74: "idf_max_url",           75: "idf_max_whole_doc",
+    76: "idf_mean_body",         77: "idf_mean_anchor",    78: "idf_mean_title",
+    79: "idf_mean_url",          80: "idf_mean_whole_doc",
+    81: "idf_variance_body",     82: "idf_variance_anchor",83: "idf_variance_title",
+    84: "idf_variance_url",      85: "idf_variance_whole_doc",
+    86: "tf_idf_sum_body",       87: "tf_idf_sum_anchor",  88: "tf_idf_sum_title",
+    89: "tf_idf_sum_url",        90: "tf_idf_sum_whole_doc",
+    91: "tf_idf_min_body",       92: "tf_idf_min_anchor",  93: "tf_idf_min_title",
+    94: "tf_idf_min_url",        95: "tf_idf_min_whole_doc",
+    96: "tf_idf_max_body",       97: "tf_idf_max_anchor",  98: "tf_idf_max_title",
+    99: "tf_idf_max_url",        100:"tf_idf_max_whole_doc",
+    101:"tf_idf_mean_body",      102:"tf_idf_mean_anchor", 103:"tf_idf_mean_title",
+    104:"tf_idf_mean_url",       105:"tf_idf_mean_whole_doc",
+    106:"bool_query_body",       107:"bool_query_anchor",  108:"bool_query_title",
+    109:"bool_query_url",        110:"bool_query_whole_doc",
+    111:"LM_body",               112:"LM_anchor",          113:"LM_title",
+    114:"LM_url",                115:"LM_whole_doc",
+    116:"LM_linear_body",        117:"LM_linear_anchor",   118:"LM_linear_title",
+    119:"LM_linear_url",         120:"LM_linear_whole_doc",
+    121:"LM_dir_body",           122:"LM_dir_anchor",      123:"LM_dir_title",
+    124:"LM_dir_url",            125:"LM_dir_whole_doc",
+    126:"BM25_body",             127:"BM25_anchor",        128:"BM25_title",
+    129:"BM25_url",              130:"BM25_whole_doc",
+    131:"LMIR_ABS_body",         132:"LMIR_ABS_anchor",    133:"LMIR_ABS_title",
+    134:"LMIR_ABS_url",          135:"LMIR_ABS_whole_doc",
+    136:"SiteMap_quality",
 }
 
 
 def get_feature_names() -> List[str]:
     """Return ordered list of 136 feature names (0-indexed for numpy)."""
-    return [FEATURE_NAMES.get(i + 1, f"f{i + 1}") for i in range(NUM_FEATURES)]
+    return [FEATURE_NAMES.get(i + 1, f"f{i+1}") for i in range(NUM_FEATURES)]
 
 
 def _parse_line(line: str) -> Tuple[int, int, List[float]]:
@@ -191,7 +114,7 @@ def _parse_line(line: str) -> Tuple[int, int, List[float]]:
         if ":" not in token:
             continue
         idx_str, val_str = token.split(":", 1)
-        idx = int(idx_str) - 1  # 0-indexed
+        idx = int(idx_str) - 1   # 0-indexed
         if 0 <= idx < NUM_FEATURES:
             fvec[idx] = float(val_str)
 
@@ -215,7 +138,11 @@ def stream_lines(filepath: str) -> Generator[Tuple[int, int, List[float]], None,
                 continue
 
 
-def load_split(filepath: str, max_rows: int = None, verbose: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_split(
+    filepath: str,
+    max_rows: int = None,
+    verbose: bool = True
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Load a single MSLR Fold1 split (train / vali / test).
 
@@ -241,7 +168,7 @@ def load_split(filepath: str, max_rows: int = None, verbose: bool = True) -> Tup
         features_list.append(fvec)
 
         if verbose and (i + 1) % 100_000 == 0:
-            logger.info(f"  Loaded {i + 1:,} rows from {os.path.basename(filepath)}...")
+            logger.info(f"  Loaded {i+1:,} rows from {os.path.basename(filepath)}...")
 
         if max_rows is not None and (i + 1) >= max_rows:
             break
@@ -250,7 +177,9 @@ def load_split(filepath: str, max_rows: int = None, verbose: bool = True) -> Tup
     y = np.array(labels_list, dtype=np.int32)
     qids = np.array(qids_list, dtype=np.int32)
 
-    assert X.shape[1] == NUM_FEATURES, f"Expected {NUM_FEATURES} features, got {X.shape[1]}"
+    assert X.shape[1] == NUM_FEATURES, (
+        f"Expected {NUM_FEATURES} features, got {X.shape[1]}"
+    )
 
     if verbose:
         n_queries = len(np.unique(qids))
@@ -279,7 +208,11 @@ def sort_by_qid(X: np.ndarray, y: np.ndarray, qids: np.ndarray):
     return X[sort_idx], y[sort_idx], qids[sort_idx]
 
 
-def load_all_splits(fold_dir: str = None, hpo_subset_rows: int = None, verbose: bool = True) -> Dict[str, Any]:
+def load_all_splits(
+    fold_dir: str = None,
+    hpo_subset_rows: int = None,
+    verbose: bool = True
+) -> Dict[str, Any]:
     """
     Load train, vali, and test splits from MSLR-WEB10K Fold1.
 
@@ -293,7 +226,32 @@ def load_all_splits(fold_dir: str = None, hpo_subset_rows: int = None, verbose: 
         Also includes 'stats' with dataset summary.
     """
     if fold_dir is None:
-        fold_dir = os.path.normpath(FOLD1_DIR)
+        root_full_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "MSLR-WEB10K", "Fold1")
+        )
+        if os.path.exists(root_full_dir) and os.path.isfile(os.path.join(root_full_dir, "train.txt")):
+            fold_dir = root_full_dir
+        else:
+            # Allow demo/synthetic fallback ONLY in automated test environments.
+            # In all other contexts (development, production, training runs) the
+            # real dataset is required — fail explicitly per the platform rule:
+            # "If a dependency/service/model is unavailable, FAIL EXPLICITLY."
+            import os as _os
+            _testing = _os.getenv("TESTING", "").lower() in ("1", "true", "yes")
+            if _testing:
+                logger.warning(
+                    f"Real MSLR-WEB10K dataset not found at {root_full_dir}. "
+                    "Falling back to synthetic demo data (TESTING=true — test-only path)."
+                )
+                fold_dir = os.path.normpath(FOLD1_DIR)
+            else:
+                raise RuntimeError(
+                    f"MSLR-WEB10K Fold1 dataset not found at: {root_full_dir}\n"
+                    "Production and development execution require the real dataset.\n"
+                    "Download it from: https://www.microsoft.com/en-us/research/project/mslr/\n"
+                    "and place train.txt / vali.txt / test.txt in the above directory.\n"
+                    "To suppress this error in tests, set TESTING=true."
+                )
 
     splits = {}
     for split_name in ["train", "vali", "test"]:
@@ -321,17 +279,23 @@ def load_all_splits(fold_dir: str = None, hpo_subset_rows: int = None, verbose: 
         "train": {
             "n_docs": int(len(y_tr)),
             "n_queries": int(len(np.unique(q_tr))),
-            "label_distribution": {str(k): int(v) for k, v in sorted(Counter(y_tr.tolist()).items())},
+            "label_distribution": {
+                str(k): int(v) for k, v in sorted(Counter(y_tr.tolist()).items())
+            },
         },
         "vali": {
             "n_docs": int(len(y_va)),
             "n_queries": int(len(np.unique(q_va))),
-            "label_distribution": {str(k): int(v) for k, v in sorted(Counter(y_va.tolist()).items())},
+            "label_distribution": {
+                str(k): int(v) for k, v in sorted(Counter(y_va.tolist()).items())
+            },
         },
         "test": {
             "n_docs": int(len(y_te)),
             "n_queries": int(len(np.unique(q_te))),
-            "label_distribution": {str(k): int(v) for k, v in sorted(Counter(y_te.tolist()).items())},
+            "label_distribution": {
+                str(k): int(v) for k, v in sorted(Counter(y_te.tolist()).items())
+            },
         },
     }
     splits["stats"] = stats

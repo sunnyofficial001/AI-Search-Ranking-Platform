@@ -9,27 +9,22 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { ShapExplanation } from '../types';
 
 export default function ShapDashboard() {
-  const [selectedProduct, setSelectedProduct] = useState('prod-1');
-  const [query, setQuery] = useState('smart speaker');
+  const [productId, setProductId] = useState('');
+  const [query, setQuery] = useState('');
   const [explanation, setExplanation] = useState<ShapExplanation | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const sampleProducts = [
-    { id: 'prod-1', title: 'Echo Dot Smart Speaker' },
-    { id: 'prod-2', title: 'Fjallraven Backpack' },
-    { id: 'prod-3', title: 'Sony Wireless Headphones' },
-    { id: 'prod-5', title: 'Anker fast GaN charger' },
-    { id: 'prod-6', title: 'Apple AirPods Pro II' },
-    { id: 'prod-7', title: 'Nike Pegasus Running Shoes' }
-  ];
-
   const fetchShapData = async () => {
+    if (!productId.trim() || !query.trim()) {
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/explain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: selectedProduct, query })
+        body: JSON.stringify({ productId, query })
       });
       const data = await res.json();
       setExplanation(data);
@@ -41,8 +36,10 @@ export default function ShapDashboard() {
   };
 
   useEffect(() => {
-    fetchShapData();
-  }, [selectedProduct, query]);
+    if (productId.trim() && query.trim()) {
+      fetchShapData();
+    }
+  }, [productId, query]);
 
   // Global static summary dataset of feature importance levels (SHAP global values across 10,000 MSLR web pages)
   const globalShapImportance = [
@@ -79,16 +76,13 @@ export default function ShapDashboard() {
           </div>
 
           <div className="flex-1 space-y-1.5">
-            <span className="text-slate-500 uppercase font-bold block">Target candidate product</span>
-            <select
-              value={selectedProduct}
-              onChange={(e) => setSelectedProduct(e.target.value)}
+            <span className="text-slate-500 uppercase font-bold block">Target product ID</span>
+            <input
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
               className="w-full bg-[#121826] border border-white/10 text-slate-200 p-2 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-            >
-              {sampleProducts.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
+              placeholder="prod-1"
+            />
           </div>
         </div>
       </div>
@@ -161,7 +155,9 @@ export default function ShapDashboard() {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-500 italic p-6 text-center">Loading calculations...</p>
+            <p className="text-xs text-slate-500 italic p-6 text-center">
+              Enter a query and product ID to load the backend SHAP explanation.
+            </p>
           )}
         </div>
 

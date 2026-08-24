@@ -13,16 +13,18 @@ Pattern follows: Google Overlapping Experiment Framework,
 LinkedIn PRIME, Netflix Interleaving, Airbnb ERF.
 """
 
-import datetime
+import math
+import time
+import random
 import hashlib
 import logging
-import math
-import random
+import datetime
 import statistics
-import time
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from enum import Enum
+from dataclasses import dataclass, field
+
+from backend.core.config import settings
 
 logger = logging.getLogger("ab_testing")
 
@@ -30,7 +32,6 @@ logger = logging.getLogger("ab_testing")
 # ---------------------------------------------------------------------------
 # Experiment State Machine
 # ---------------------------------------------------------------------------
-
 
 class ExperimentStatus(str, Enum):
     DRAFT = "draft"
@@ -50,7 +51,7 @@ class Variant:
     id: str
     name: str
     variant_type: VariantType
-    traffic_fraction: float  # 0.0 to 1.0
+    traffic_fraction: float        # 0.0 to 1.0
     config: Dict[str, Any] = field(default_factory=dict)
     # Live metrics
     impressions: int = 0
@@ -76,17 +77,17 @@ class Experiment:
     id: str
     name: str
     description: str
-    primary_metric: str  # e.g. "ndcg@10", "ctr", "purchase_rate"
-    guardrail_metrics: List[str]  # metrics that must not degrade
+    primary_metric: str            # e.g. "ndcg@10", "ctr", "purchase_rate"
+    guardrail_metrics: List[str]   # metrics that must not degrade
     variants: List[Variant]
     status: ExperimentStatus = ExperimentStatus.DRAFT
     created_at: str = field(default_factory=lambda: datetime.datetime.utcnow().isoformat())
     started_at: Optional[str] = None
     concluded_at: Optional[str] = None
-    min_sample_size: int = 1000  # per variant
+    min_sample_size: int = 1000    # per variant
     max_duration_days: int = 14
     significance_level: float = 0.05  # α
-    power: float = 0.80  # 1 - β
+    power: float = 0.80               # 1 - β
     winner_variant_id: Optional[str] = None
     conclusion: Optional[str] = None
 
@@ -95,14 +96,12 @@ class Experiment:
 # Statistical Tests
 # ---------------------------------------------------------------------------
 
-
 class ABStatisticalTests:
+
     @staticmethod
     def two_proportion_z_test(
-        n_control: int,
-        k_control: int,
-        n_treatment: int,
-        k_treatment: int,
+        n_control: int, k_control: int,
+        n_treatment: int, k_treatment: int,
     ) -> Tuple[float, float, bool]:
         """
         Two-proportion Z-test for conversion rate comparison.
@@ -151,7 +150,9 @@ class ABStatisticalTests:
         t = (mean_t - mean_c) / se
 
         # Welch-Satterthwaite degrees of freedom
-        dof = ((var_c / nc + var_t / nt) ** 2) / ((var_c / nc) ** 2 / (nc - 1) + (var_t / nt) ** 2 / (nt - 1))
+        dof = ((var_c / nc + var_t / nt) ** 2) / (
+            (var_c / nc) ** 2 / (nc - 1) + (var_t / nt) ** 2 / (nt - 1)
+        )
         p_value = 2 * (1 - ABStatisticalTests._t_cdf(abs(t), dof))
 
         # Cohen's d
@@ -163,7 +164,7 @@ class ABStatisticalTests:
     @staticmethod
     def minimum_sample_size(
         baseline_rate: float,
-        mde: float,  # Minimum detectable effect (relative)
+        mde: float,       # Minimum detectable effect (relative)
         alpha: float = 0.05,
         power: float = 0.80,
     ) -> int:
@@ -175,7 +176,7 @@ class ABStatisticalTests:
         p2 = baseline_rate * (1 + mde)
         # Z values
         z_alpha = 1.96 if alpha == 0.05 else 2.576  # two-tailed
-        z_beta = 0.842 if power == 0.80 else 1.282  # one-tailed
+        z_beta = 0.842 if power == 0.80 else 1.282   # one-tailed
 
         numerator = (z_alpha + z_beta) ** 2 * (p1 * (1 - p1) + p2 * (1 - p2))
         denominator = (p2 - p1) ** 2
@@ -194,23 +195,18 @@ class ABStatisticalTests:
     @staticmethod
     def _t_cdf(t: float, df: float) -> float:
         """Approximation of Student's t CDF via incomplete beta function approximation."""
-        df / (df + t * t)
+        x = df / (df + t * t)
         # Simple approximation using normal CDF for large df
         if df > 30:
             return ABStatisticalTests._normal_cdf(t)
         # Regularized incomplete beta approximation
-        df / 2.0
-        return (
-            1.0 - 0.5 * math.exp(-t * t / 2)
-            if df > 100
-            else ABStatisticalTests._normal_cdf(t * math.sqrt(df / (df + t * t)))
-        )
+        a = df / 2.0
+        return 1.0 - 0.5 * math.exp(-t * t / 2) if df > 100 else ABStatisticalTests._normal_cdf(t * math.sqrt(df / (df + t * t)))
 
 
 # ---------------------------------------------------------------------------
 # Multi-Armed Bandit (Thompson Sampling)
 # ---------------------------------------------------------------------------
-
 
 class ThompsonSamplingBandit:
     """
@@ -242,27 +238,27 @@ class ThompsonSamplingBandit:
             self._beta[variant_id] += 1 - reward
 
     def get_estimated_rates(self) -> Dict[str, float]:
-        return {vid: self._alpha[vid] / (self._alpha[vid] + self._beta[vid]) for vid in self._alpha}
+        return {
+            vid: self._alpha[vid] / (self._alpha[vid] + self._beta[vid])
+            for vid in self._alpha
+        }
 
 
 # ---------------------------------------------------------------------------
 # Experiment Manager
 # ---------------------------------------------------------------------------
 
-
 class ExperimentManager:
     """
     Manages experiment lifecycle, assignment, and metric recording.
     Thread-safe via simple dict operations (Redis-backed in production).
     """
-
     _experiments: Dict[str, Experiment] = {}
     _bandits: Dict[str, ThompsonSamplingBandit] = {}
 
-    # Seed two canonical experiments for demo
     @classmethod
     def _seed_experiments(cls):
-        if cls._experiments:
+        if cls._experiments or not settings.is_testing:
             return
 
         # Experiment 1: LambdaMART vs RankNet
@@ -274,46 +270,18 @@ class ExperimentManager:
             guardrail_metrics=["latency_p99", "ctr"],
             variants=[
                 Variant(
-                    id="control-lambdamart",
-                    name="LambdaMART (Control)",
-                    variant_type=VariantType.CONTROL,
-                    traffic_fraction=0.50,
+                    id="control-lambdamart", name="LambdaMART (Control)",
+                    variant_type=VariantType.CONTROL, traffic_fraction=0.50,
                     config={"algorithm": "listwise_lambdamart", "n_estimators": 100},
-                    impressions=4820,
-                    conversions=386,
-                    metric_values=[
-                        0.82,
-                        0.85,
-                        0.79,
-                        0.88,
-                        0.84,
-                        0.81,
-                        0.87,
-                        0.83,
-                        0.80,
-                        0.86,
-                    ],
+                    impressions=4820, conversions=386,
+                    metric_values=[0.82, 0.85, 0.79, 0.88, 0.84, 0.81, 0.87, 0.83, 0.80, 0.86],
                 ),
                 Variant(
-                    id="treatment-ranknet",
-                    name="RankNet Neural (Treatment)",
-                    variant_type=VariantType.TREATMENT,
-                    traffic_fraction=0.50,
+                    id="treatment-ranknet", name="RankNet Neural (Treatment)",
+                    variant_type=VariantType.TREATMENT, traffic_fraction=0.50,
                     config={"algorithm": "pairwise_ranknet", "epochs": 100},
-                    impressions=4912,
-                    conversions=422,
-                    metric_values=[
-                        0.84,
-                        0.87,
-                        0.82,
-                        0.90,
-                        0.86,
-                        0.83,
-                        0.89,
-                        0.85,
-                        0.82,
-                        0.88,
-                    ],
+                    impressions=4912, conversions=422,
+                    metric_values=[0.84, 0.87, 0.82, 0.90, 0.86, 0.83, 0.89, 0.85, 0.82, 0.88],
                 ),
             ],
             status=ExperimentStatus.RUNNING,
@@ -330,46 +298,18 @@ class ExperimentManager:
             guardrail_metrics=["purchase_rate", "diversity_score"],
             variants=[
                 Variant(
-                    id="control-hybrid-50",
-                    name="50/50 Hybrid (Control)",
-                    variant_type=VariantType.CONTROL,
-                    traffic_fraction=0.50,
+                    id="control-hybrid-50", name="50/50 Hybrid (Control)",
+                    variant_type=VariantType.CONTROL, traffic_fraction=0.50,
                     config={"cf_weight": 0.50, "cb_weight": 0.50},
-                    impressions=3200,
-                    conversions=288,
-                    metric_values=[
-                        0.09,
-                        0.10,
-                        0.08,
-                        0.11,
-                        0.09,
-                        0.10,
-                        0.08,
-                        0.11,
-                        0.09,
-                        0.10,
-                    ],
+                    impressions=3200, conversions=288,
+                    metric_values=[0.09, 0.10, 0.08, 0.11, 0.09, 0.10, 0.08, 0.11, 0.09, 0.10],
                 ),
                 Variant(
-                    id="treatment-hybrid-70",
-                    name="70/30 Hybrid (Treatment)",
-                    variant_type=VariantType.TREATMENT,
-                    traffic_fraction=0.50,
+                    id="treatment-hybrid-70", name="70/30 Hybrid (Treatment)",
+                    variant_type=VariantType.TREATMENT, traffic_fraction=0.50,
                     config={"cf_weight": 0.70, "cb_weight": 0.30},
-                    impressions=3185,
-                    conversions=319,
-                    metric_values=[
-                        0.10,
-                        0.11,
-                        0.09,
-                        0.12,
-                        0.10,
-                        0.11,
-                        0.09,
-                        0.12,
-                        0.10,
-                        0.11,
-                    ],
+                    impressions=3185, conversions=319,
+                    metric_values=[0.10, 0.11, 0.09, 0.12, 0.10, 0.11, 0.09, 0.12, 0.10, 0.11],
                 ),
             ],
             status=ExperimentStatus.CONCLUDED,
@@ -474,10 +414,8 @@ class ExperimentManager:
         for treatment in treatments:
             # Two-proportion Z-test (conversion rate)
             z, p_conv, sig_conv = ABStatisticalTests.two_proportion_z_test(
-                control.impressions,
-                control.conversions,
-                treatment.impressions,
-                treatment.conversions,
+                control.impressions, control.conversions,
+                treatment.impressions, treatment.conversions,
             )
 
             # Welch t-test (continuous metric)
@@ -490,7 +428,9 @@ class ExperimentManager:
             lift_conversion = (
                 (treatment.conversion_rate - control.conversion_rate) / max(control.conversion_rate, 1e-10) * 100
             )
-            lift_metric = (treatment.mean_metric - control.mean_metric) / max(control.mean_metric, 1e-10) * 100
+            lift_metric = (
+                (treatment.mean_metric - control.mean_metric) / max(control.mean_metric, 1e-10) * 100
+            )
 
             results["analysis"][treatment.id] = {
                 "variant_name": treatment.name,
@@ -509,17 +449,8 @@ class ExperimentManager:
                     "std_metric": round(treatment.std_metric, 4),
                 },
                 "statistical_tests": {
-                    "z_test": {
-                        "z_statistic": z,
-                        "p_value": p_conv,
-                        "significant": sig_conv,
-                    },
-                    "t_test": {
-                        "t_statistic": t_stat,
-                        "p_value": p_metric,
-                        "significant": sig_metric,
-                        "cohens_d": cohens_d,
-                    },
+                    "z_test": {"z_statistic": z, "p_value": p_conv, "significant": sig_conv},
+                    "t_test": {"t_statistic": t_stat, "p_value": p_metric, "significant": sig_metric, "cohens_d": cohens_d},
                 },
                 "lift": {
                     "conversion_rate_lift_pct": round(lift_conversion, 2),
@@ -527,12 +458,17 @@ class ExperimentManager:
                 },
                 "significant": sig_conv or sig_metric,
                 "effect_size_interpretation": (
-                    "small" if abs(cohens_d) < 0.3 else "medium" if abs(cohens_d) < 0.5 else "large"
+                    "small" if abs(cohens_d) < 0.3
+                    else "medium" if abs(cohens_d) < 0.5
+                    else "large"
                 ),
             }
 
         # Overall recommendation
-        any_significant = any(r.get("significant", False) for r in results["analysis"].values())
+        any_significant = any(
+            r.get("significant", False)
+            for r in results["analysis"].values()
+        )
         results["recommendation"] = (
             "Statistically significant difference found. Consider shipping winning variant."
             if any_significant and results["sample_size_adequate"]
@@ -567,8 +503,7 @@ class ExperimentManager:
         exp_id = f"exp-{int(time.time())}"
         variants = [
             Variant(
-                id=v["id"],
-                name=v["name"],
+                id=v["id"], name=v["name"],
                 variant_type=VariantType(v.get("type", "treatment")),
                 traffic_fraction=v.get("traffic_fraction", 0.5),
                 config=v.get("config", {}),

@@ -13,50 +13,38 @@ Production-grade tests covering:
   - Performance benchmarks
 """
 
-import math
-import os
 import sys
+import os
+import math
 import time
 import unittest
 
 # Path setup
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from backend.ab_testing.ab_testing import ABStatisticalTests, ExperimentManager
-from backend.drift_detection.drift_monitor import DriftMonitor, StatisticalTests
 from backend.evaluation.evaluate import Evaluator
-from backend.feature_store.feature_store import (
-    FeatureValidator,
-    OfflineFeaturePipeline,
-    OnlineFeatureStore,
+from backend.services.ranking_engine import (
+    PointwiseScorer, PairwiseRankNetScorer, ListwiseLambdaMARTScorer,
+    EnsembleRanker, DiversityReRanker, MultiStageRankingPipeline,
+    RankingContext, RankingEvaluator, RankingCandidate,
 )
+from backend.feature_store.feature_store import (
+    OfflineFeaturePipeline, OnlineFeatureStore, FeatureValidator,
+    FEATURE_REGISTRY,
+)
+from backend.drift_detection.drift_monitor import StatisticalTests, DriftMonitor
+from backend.ab_testing.ab_testing import ABStatisticalTests, ExperimentManager
 from backend.model_registry.model_registry import ModelRegistry, ModelStage, ModelType
 from backend.services.advanced_recommend import (
-    ITEM_CATALOG,
-    ColdStartHandler,
-    DiversityOptimizer,
-    EmbeddingEngine,
-    SessionBasedRecommender,
-    TwoTowerRecommender,
-    UserSession,
-)
-from backend.services.ranking_engine import (
-    DiversityReRanker,
-    EnsembleRanker,
-    ListwiseLambdaMARTScorer,
-    MultiStageRankingPipeline,
-    PairwiseRankNetScorer,
-    PointwiseScorer,
-    RankingCandidate,
-    RankingContext,
-    RankingEvaluator,
+    EmbeddingEngine, SessionBasedRecommender, TwoTowerRecommender,
+    DiversityOptimizer, ColdStartHandler, UserSession, ITEM_CATALOG,
 )
 from backend.services.search_service import SearchService
+
 
 # ============================================================
 # SECTION 1: EVALUATION METRICS
 # ============================================================
-
 
 class TestEvaluationMetrics(unittest.TestCase):
     """Test NDCG, MAP, MRR, ERR calculations for correctness."""
@@ -97,7 +85,9 @@ class TestEvaluationMetrics(unittest.TestCase):
 
     def test_map_calculation(self):
         """MAP: items at positions 1 and 3 relevant → AP = (1/1 + 2/3) / 2 = 0.833."""
-        ranked = [4, 1, 3, 0]
+        # ranked[0]=4 (relevant), ranked[1]=0 (not relevant), ranked[2]=3 (relevant), ranked[3]=0
+        # AP = (P@1 + P@3) / num_relevant = (1/1 + 2/3) / 2 = (1.0 + 0.667) / 2 = 0.8333
+        ranked = [4, 0, 3, 0]
         computed = Evaluator.calculate_map(ranked, 2)
         self.assertAlmostEqual(computed, 0.8333, places=3)
 
@@ -115,13 +105,13 @@ class TestEvaluationMetrics(unittest.TestCase):
 
     def test_precision_at_k(self):
         """P@5 with 3 relevant in top 5 = 0.6."""
-        ranked = [3, 0, 5, 1, 2]
+        ranked = [3, 0, 5, 0, 2]  # exactly 3 non-zero (relevant) items
         prec = Evaluator.calculate_precision_at_k(ranked, 5)
         self.assertEqual(prec, 0.6)
 
     def test_recall_at_k(self):
         """R@5 with all 3 relevant in top 5 = 1.0."""
-        ranked = [3, 0, 5, 1, 2]
+        ranked = [3, 0, 5, 0, 2]  # exactly 3 non-zero (relevant) items
         rec = Evaluator.calculate_recall_at_k(ranked, 3, 5)
         self.assertEqual(rec, 1.0)
 
@@ -138,24 +128,15 @@ class TestEvaluationMetrics(unittest.TestCase):
 # SECTION 2: RANKING ENGINE
 # ============================================================
 
-
 class TestRankingEngine(unittest.TestCase):
     """Test multi-stage ranking pipeline components."""
 
     SAMPLE_FEATURES = {
-        "bm25_score": 2.5,
-        "tfidf_cosine": 0.6,
-        "exact_match_title": 1.0,
-        "query_term_coverage": 0.8,
-        "title_term_density": 0.5,
-        "ctr_7d": 0.15,
-        "dwell_time_median_seconds": 120.0,
-        "freshness_score": 0.9,
-        "popularity_score": 90.0,
-        "avg_rating": 4.8,
-        "query_category_match": 0.7,
-        "add_to_cart_rate": 0.06,
-        "purchase_rate": 0.02,
+        "bm25_score": 2.5, "tfidf_cosine": 0.6, "exact_match_title": 1.0,
+        "query_term_coverage": 0.8, "title_term_density": 0.5, "ctr_7d": 0.15,
+        "dwell_time_median_seconds": 120.0, "freshness_score": 0.9,
+        "popularity_score": 90.0, "avg_rating": 4.8, "query_category_match": 0.7,
+        "add_to_cart_rate": 0.06, "purchase_rate": 0.02,
     }
 
     def _make_candidate(self, doc_id="prod-1", category="Electronics", bm25=2.0, ctr=0.12):
@@ -208,8 +189,14 @@ class TestRankingEngine(unittest.TestCase):
 
     def test_diversity_reranker_changes_order(self):
         """MMR re-ranker should return results with different category distribution."""
-        candidates = [self._make_candidate(f"prod-{i}", category="Electronics", bm25=float(5 - i)) for i in range(5)]
-        candidates += [self._make_candidate(f"prod-apparel-{i}", category="Apparel", bm25=float(i)) for i in range(3)]
+        candidates = [
+            self._make_candidate(f"prod-{i}", category="Electronics", bm25=float(5 - i))
+            for i in range(5)
+        ]
+        candidates += [
+            self._make_candidate(f"prod-apparel-{i}", category="Apparel", bm25=float(i))
+            for i in range(3)
+        ]
         for c in candidates:
             c.personalized_score = c.features["bm25_score"] / 5.0
 
@@ -221,7 +208,6 @@ class TestRankingEngine(unittest.TestCase):
     def test_multi_stage_pipeline_returns_results(self):
         """Full pipeline should return ranked results with metadata."""
         from backend.services.search_service import MOCK_PRODUCTS
-
         context = RankingContext(query="headphones", page=1, page_size=5)
         ranked, meta = MultiStageRankingPipeline.rank(MOCK_PRODUCTS, "headphones", context)
         self.assertGreater(len(ranked), 0)
@@ -234,15 +220,7 @@ class TestRankingEngine(unittest.TestCase):
         for i, c in enumerate(candidates):
             c.relevance_label = 4 - i
         metrics = RankingEvaluator.full_evaluation_suite(candidates)
-        for key in [
-            "ndcg@5",
-            "ndcg@10",
-            "map",
-            "mrr",
-            "err@10",
-            "precision@5",
-            "recall@5",
-        ]:
+        for key in ["ndcg@5", "ndcg@10", "map", "mrr", "err@10", "precision@5", "recall@5"]:
             self.assertIn(key, metrics)
             self.assertGreaterEqual(metrics[key], 0.0)
 
@@ -258,7 +236,6 @@ class TestRankingEngine(unittest.TestCase):
 # SECTION 3: FEATURE STORE
 # ============================================================
 
-
 class TestFeatureStore(unittest.TestCase):
     """Test feature computation, validation, and caching."""
 
@@ -267,33 +244,31 @@ class TestFeatureStore(unittest.TestCase):
         "title": "Sony WH-1000XM5 Noise Cancelling Headphones",
         "description": "Industry leading noise canceling headphones with 30 hours battery life",
         "category": "Electronics",
-        "popularity": 95.0,
-        "ctr": 0.15,
-        "freshness": 0.90,
-        "engagement": 4.8,
+        "popularity": 95.0, "ctr": 0.15, "freshness": 0.90, "engagement": 4.8,
     }
 
     def test_query_doc_features_keys(self):
         """Computed features should contain all expected keys."""
-        features = OfflineFeaturePipeline.compute_query_doc_features("noise cancelling headphones", self.SAMPLE_DOC)
-        expected_keys = [
-            "bm25_score",
-            "tfidf_cosine",
-            "exact_match_title",
-            "query_term_coverage",
-            "title_term_density",
-        ]
+        features = OfflineFeaturePipeline.compute_query_doc_features(
+            "noise cancelling headphones", self.SAMPLE_DOC
+        )
+        expected_keys = ["bm25_score", "tfidf_cosine", "exact_match_title",
+                         "query_term_coverage", "title_term_density"]
         for key in expected_keys:
             self.assertIn(key, features)
 
     def test_bm25_positive_for_relevant_query(self):
         """BM25 should be > 0 for matching query."""
-        features = OfflineFeaturePipeline.compute_query_doc_features("noise cancelling headphones", self.SAMPLE_DOC)
+        features = OfflineFeaturePipeline.compute_query_doc_features(
+            "noise cancelling headphones", self.SAMPLE_DOC
+        )
         self.assertGreater(features["bm25_score"], 0.0)
 
     def test_bm25_zero_for_irrelevant_query(self):
         """BM25 should be 0 for completely irrelevant query."""
-        features = OfflineFeaturePipeline.compute_query_doc_features("xyz qwerty zzzz", self.SAMPLE_DOC)
+        features = OfflineFeaturePipeline.compute_query_doc_features(
+            "xyz qwerty zzzz", self.SAMPLE_DOC
+        )
         self.assertEqual(features["bm25_score"], 0.0)
 
     def test_document_features_range(self):
@@ -336,7 +311,9 @@ class TestFeatureStore(unittest.TestCase):
 
     def test_full_feature_vector_has_correct_count(self):
         """Full feature vector should contain both qd and doc features."""
-        vector = OfflineFeaturePipeline.compute_full_feature_vector("headphones", self.SAMPLE_DOC)
+        vector = OfflineFeaturePipeline.compute_full_feature_vector(
+            "headphones", self.SAMPLE_DOC
+        )
         self.assertGreater(len(vector.features), 10)
         self.assertIsNotNone(vector.entity_key)
         self.assertIsNotNone(vector.computed_at)
@@ -355,7 +332,6 @@ class TestFeatureStore(unittest.TestCase):
 # SECTION 4: DRIFT DETECTION
 # ============================================================
 
-
 class TestDriftDetection(unittest.TestCase):
     """Test statistical drift detection algorithms."""
 
@@ -368,8 +344,8 @@ class TestDriftDetection(unittest.TestCase):
     def test_psi_very_different_distributions(self):
         """PSI of well-separated distributions should be > 0.2."""
         # Use spread distributions so bucket logic fires correctly
-        ref = list(range(1, 51))  # 1-50 uniform
-        cur = list(range(200, 250))  # 200-249 — completely disjoint
+        ref = list(range(1, 51))          # 1-50 uniform
+        cur = list(range(200, 250))       # 200-249 — completely disjoint
         psi = StatisticalTests.psi(ref, cur)
         # All current values fall outside reference range → buckets max out → PSI large
         self.assertGreater(psi, 0.2)
@@ -377,7 +353,6 @@ class TestDriftDetection(unittest.TestCase):
     def test_psi_moderate_shift(self):
         """PSI for moderate shift should be between 0.1 and 0.2."""
         import random
-
         random.seed(42)
         ref = [random.gauss(0, 1) for _ in range(200)]
         cur = [random.gauss(0.5, 1) for _ in range(200)]
@@ -407,7 +382,6 @@ class TestDriftDetection(unittest.TestCase):
     def test_jsd_range(self):
         """JSD must be in [0, 1]."""
         import random
-
         ref = [random.gauss(0, 1) for _ in range(100)]
         cur = [random.gauss(5, 1) for _ in range(100)]
         jsd = StatisticalTests.jensen_shannon_divergence(ref, cur)
@@ -426,7 +400,6 @@ class TestDriftDetection(unittest.TestCase):
     def test_page_hinkley_no_false_positive(self):
         """Page-Hinkley should not trigger on stable data."""
         import random
-
         random.seed(123)
         stable = [random.gauss(1.0, 0.1) for _ in range(30)]
         change, _ = StatisticalTests.page_hinkley(stable, lambda_threshold=200.0)
@@ -443,7 +416,6 @@ class TestDriftDetection(unittest.TestCase):
 # ============================================================
 # SECTION 5: A/B TESTING
 # ============================================================
-
 
 class TestABTesting(unittest.TestCase):
     """Test statistical significance testing and experiment management."""
@@ -463,7 +435,6 @@ class TestABTesting(unittest.TestCase):
     def test_t_test_significant(self):
         """Large mean difference with tiny variance → significant."""
         import random as _r
-
         _r.seed(0)
         control = [0.5 + _r.gauss(0, 0.01) for _ in range(100)]
         treatment = [0.8 + _r.gauss(0, 0.01) for _ in range(100)]
@@ -473,7 +444,6 @@ class TestABTesting(unittest.TestCase):
     def test_t_test_cohens_d_large(self):
         """Large effect size should give Cohen's d > 0.8."""
         import random as _r
-
         _r.seed(1)
         control = [1.0 + _r.gauss(0, 0.1) for _ in range(50)]
         treatment = [3.0 + _r.gauss(0, 0.1) for _ in range(50)]
@@ -517,7 +487,6 @@ class TestABTesting(unittest.TestCase):
 # ============================================================
 # SECTION 6: RECOMMENDATION ENGINE
 # ============================================================
-
 
 class TestRecommendationEngine(unittest.TestCase):
     """Test advanced recommendation algorithms."""
@@ -585,7 +554,6 @@ class TestRecommendationEngine(unittest.TestCase):
     def test_diversity_optimizer_ild(self):
         """ILD should be higher when categories are diverse."""
         from backend.services.advanced_recommend import RecommendationItem
-
         diverse = [
             RecommendationItem("prod-1", "Echo Dot", "Electronics", 0.8, "content_based"),
             RecommendationItem("prod-2", "Kanken", "Apparel", 0.7, "content_based"),
@@ -605,7 +573,6 @@ class TestRecommendationEngine(unittest.TestCase):
 # SECTION 7: SEARCH SERVICE
 # ============================================================
 
-
 class TestSearchService(unittest.TestCase):
     """Test BM25, TF-IDF, and query expansion."""
 
@@ -621,11 +588,7 @@ class TestSearchService(unittest.TestCase):
 
     def test_cosine_similarity_range(self):
         """Cosine similarity should be in [0, 1]."""
-        result = SearchService.calculate_tfidf_and_cosine(
-            "noise cancelling headphones",
-            "Sony Headphones",
-            "noise cancelling wireless",
-        )
+        result = SearchService.calculate_tfidf_and_cosine("noise cancelling headphones", "Sony Headphones", "noise cancelling wireless")
         self.assertGreaterEqual(result["cosine"], 0.0)
         self.assertLessEqual(result["cosine"], 1.0)
 
@@ -644,7 +607,6 @@ class TestSearchService(unittest.TestCase):
 # ============================================================
 # SECTION 8: MODEL REGISTRY
 # ============================================================
-
 
 class TestModelRegistry(unittest.TestCase):
     """Test model registry CRUD and lifecycle operations."""
@@ -695,23 +657,15 @@ class TestModelRegistry(unittest.TestCase):
 # SECTION 9: PERFORMANCE BENCHMARKS
 # ============================================================
 
-
 class TestPerformanceBenchmarks(unittest.TestCase):
     """Ensure key operations meet latency SLAs."""
 
     FEATURES = {
-        "bm25_score": 2.5,
-        "tfidf_cosine": 0.6,
-        "ctr_7d": 0.12,
-        "freshness_score": 0.9,
-        "popularity_score": 90.0,
-        "avg_rating": 4.8,
-        "exact_match_title": 1.0,
-        "query_term_coverage": 0.8,
-        "title_term_density": 0.5,
-        "query_category_match": 0.7,
-        "add_to_cart_rate": 0.06,
-        "purchase_rate": 0.02,
+        "bm25_score": 2.5, "tfidf_cosine": 0.6, "ctr_7d": 0.12,
+        "freshness_score": 0.9, "popularity_score": 90.0, "avg_rating": 4.8,
+        "exact_match_title": 1.0, "query_term_coverage": 0.8,
+        "title_term_density": 0.5, "query_category_match": 0.7,
+        "add_to_cart_rate": 0.06, "purchase_rate": 0.02,
         "dwell_time_median_seconds": 120.0,
     }
 
@@ -724,16 +678,8 @@ class TestPerformanceBenchmarks(unittest.TestCase):
 
     def test_feature_computation_sub_5ms(self):
         """Full feature vector computation should be < 5ms."""
-        doc = {
-            "id": "prod-1",
-            "title": "Sony Headphones",
-            "description": "Wireless noise cancelling",
-            "category": "Electronics",
-            "popularity": 90.0,
-            "ctr": 0.15,
-            "freshness": 0.9,
-            "engagement": 4.8,
-        }
+        doc = {"id": "prod-1", "title": "Sony Headphones", "description": "Wireless noise cancelling",
+               "category": "Electronics", "popularity": 90.0, "ctr": 0.15, "freshness": 0.9, "engagement": 4.8}
         start = time.perf_counter_ns()
         OfflineFeaturePipeline.compute_full_feature_vector("headphones", doc)
         elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
@@ -742,7 +688,6 @@ class TestPerformanceBenchmarks(unittest.TestCase):
     def test_batch_ranking_10_docs_sub_50ms(self):
         """Ranking 10 documents should complete in < 50ms."""
         from backend.services.search_service import MOCK_PRODUCTS
-
         context = RankingContext(query="electronics", page=1, page_size=10)
         start = time.perf_counter_ns()
         MultiStageRankingPipeline.rank(MOCK_PRODUCTS, "electronics", context)

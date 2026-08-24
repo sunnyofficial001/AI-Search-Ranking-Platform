@@ -12,11 +12,10 @@ Implemented:
 - Recall@k     (k=10)
 """
 
-import logging
 import math
-from typing import Dict, List, Tuple
-
 import numpy as np
+from typing import Dict, List, Tuple, Optional
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ def _dcg_at_k(relevances: List[int], k: int) -> float:
     """Compute DCG@k for a single ranked list."""
     dcg = 0.0
     for i, rel in enumerate(relevances[:k]):
-        dcg += (2.0**rel - 1.0) / math.log2(i + 2.0)
+        dcg += (2.0 ** rel - 1.0) / math.log2(i + 2.0)
     return dcg
 
 
@@ -152,9 +151,9 @@ def compute_all_metrics(
     metrics = evaluate_per_query(y_true, y_pred, qids, k_values=(1, 3, 5, 10))
 
     if verbose:
-        logger.info(f"\n{'=' * 55}")
+        logger.info(f"\n{'='*55}")
         logger.info(f"  {model_name} — Test Set Evaluation ({metrics['n_queries']:,} queries)")
-        logger.info(f"{'=' * 55}")
+        logger.info(f"{'='*55}")
         logger.info(f"  NDCG@1  = {metrics['NDCG@1']:.5f}")
         logger.info(f"  NDCG@3  = {metrics['NDCG@3']:.5f}")
         logger.info(f"  NDCG@5  = {metrics['NDCG@5']:.5f}")
@@ -163,7 +162,7 @@ def compute_all_metrics(
         logger.info(f"  MRR     = {metrics['MRR']:.5f}")
         logger.info(f"  P@10    = {metrics['P@10']:.5f}")
         logger.info(f"  R@10    = {metrics['R@10']:.5f}")
-        logger.info(f"{'=' * 55}\n")
+        logger.info(f"{'='*55}\n")
 
     return metrics
 
@@ -177,17 +176,7 @@ def format_metrics_table(results: Dict[str, Dict[str, float]]) -> str:
     Returns:
         Markdown table string.
     """
-    headers = [
-        "Model",
-        "NDCG@1",
-        "NDCG@3",
-        "NDCG@5",
-        "NDCG@10",
-        "MAP",
-        "MRR",
-        "P@10",
-        "R@10",
-    ]
+    headers = ["Model", "NDCG@1", "NDCG@3", "NDCG@5", "NDCG@10", "MAP", "MRR", "P@10", "R@10"]
     col_w = [30, 8, 8, 8, 9, 8, 8, 8, 8]
     sep = "| " + " | ".join("-" * w for w in col_w) + " |"
 

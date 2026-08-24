@@ -1,7 +1,8 @@
 {
-  "name": "react-example",
+  "name": "ai-search-ranking-platform",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
+  "description": "Production-oriented Learning-to-Rank search platform combining retrieval, multi-stage ranking, explainability, experimentation, and MLOps.",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

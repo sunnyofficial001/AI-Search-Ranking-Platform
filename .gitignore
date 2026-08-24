@@ -48,20 +48,11 @@ models/
 Thumbs.db
 desktop.ini
 
-# IDE
+# IDE & Databases
 .vscode/
 .idea/
 *.swp
+*.db
+dev.db
+*.log
 
-# Tool caches (never commit these)
-.ruff_cache/
-.mypy_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Test artifacts
-*.xml
-bandit-report.json
-drift-report.json
-coverage.xml

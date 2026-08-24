@@ -1,22 +1,26 @@
-import logging
-import math
 import os
 import re
-from typing import Any, Dict, List
+import math
+import logging
+from typing import List, Dict, Any
+
+from backend.core.config import settings
 
 logger = logging.getLogger("search_service")
 
-# Try to load elasticsearch client
+# Try to connect to Elasticsearch at import time.
+# ES_AVAILABLE=False means the cluster is unreachable — this is handled
+# explicitly in fetch_candidate_documents() per the platform rule:
+# "If a dependency/service/model is unavailable, FAIL EXPLICITLY."
 try:
     from elasticsearch import Elasticsearch
-
     ES_HOSTS = os.getenv("ELASTICSEARCH_HOSTS", "http://localhost:9200")
-    es_client = Elasticsearch(ES_HOSTS, timeout=5)
+    es_client = Elasticsearch(ES_HOSTS, request_timeout=5)
     es_client.ping()
     ES_AVAILABLE = True
-    logger.info("Elasticsearch server verified successfully.")
+    logger.info("Elasticsearch cluster reachable at %s.", ES_HOSTS)
 except Exception as e:
-    logger.warn(f"Elasticsearch not connecting, falling back to fully integrated mathematical engine: {e}")
+    logger.warning("Elasticsearch unavailable (%s). Retrieval will fail explicitly unless TESTING=true.", e)
     ES_AVAILABLE = False
     es_client = None
 
@@ -30,7 +34,7 @@ MOCK_PRODUCTS = [
         "popularity": 92.0,
         "ctr": 0.12,
         "freshness": 0.85,
-        "engagement": 4.6,
+        "engagement": 4.6
     },
     {
         "id": "prod-2",
@@ -40,7 +44,7 @@ MOCK_PRODUCTS = [
         "popularity": 88.0,
         "ctr": 0.08,
         "freshness": 0.60,
-        "engagement": 4.4,
+        "engagement": 4.4
     },
     {
         "id": "prod-3",
@@ -50,7 +54,7 @@ MOCK_PRODUCTS = [
         "popularity": 95.0,
         "ctr": 0.15,
         "freshness": 0.90,
-        "engagement": 4.8,
+        "engagement": 4.8
     },
     {
         "id": "prod-4",
@@ -60,7 +64,7 @@ MOCK_PRODUCTS = [
         "popularity": 79.0,
         "ctr": 0.05,
         "freshness": 0.40,
-        "engagement": 4.1,
+        "engagement": 4.1
     },
     {
         "id": "prod-5",
@@ -70,7 +74,7 @@ MOCK_PRODUCTS = [
         "popularity": 91.0,
         "ctr": 0.18,
         "freshness": 0.95,
-        "engagement": 4.7,
+        "engagement": 4.7
     },
     {
         "id": "prod-6",
@@ -80,7 +84,7 @@ MOCK_PRODUCTS = [
         "popularity": 98.0,
         "ctr": 0.22,
         "freshness": 0.92,
-        "engagement": 4.9,
+        "engagement": 4.9
     },
     {
         "id": "prod-7",
@@ -90,7 +94,7 @@ MOCK_PRODUCTS = [
         "popularity": 84.0,
         "ctr": 0.07,
         "freshness": 0.70,
-        "engagement": 4.3,
+        "engagement": 4.3
     },
     {
         "id": "prod-8",
@@ -100,7 +104,7 @@ MOCK_PRODUCTS = [
         "popularity": 75.0,
         "ctr": 0.04,
         "freshness": 0.20,
-        "engagement": 4.5,
+        "engagement": 4.5
     },
     {
         "id": "prod-9",
@@ -110,7 +114,7 @@ MOCK_PRODUCTS = [
         "popularity": 86.0,
         "ctr": 0.10,
         "freshness": 0.88,
-        "engagement": 4.5,
+        "engagement": 4.5
     },
     {
         "id": "prod-10",
@@ -120,15 +124,13 @@ MOCK_PRODUCTS = [
         "popularity": 81.0,
         "ctr": 0.06,
         "freshness": 0.50,
-        "engagement": 4.2,
-    },
+        "engagement": 4.2
+    }
 ]
 
-
 def tokenize(text: str) -> List[str]:
-    clean = re.sub(r"[^\w\s-]", "", text.lower())
+    clean = re.sub(r'[^\w\s-]', '', text.lower())
     return [t for t in clean.split() if len(t) > 2]
-
 
 # Compute document stats needed for BM25
 DOC_COUNT = len(MOCK_PRODUCTS)
@@ -141,11 +143,9 @@ for p in MOCK_PRODUCTS:
     for t in tokens:
         TERM_DFS[t] = TERM_DFS.get(t, 0) + 1
 
-
 def calculate_idf(term: str) -> float:
     df = TERM_DFS.get(term, 0)
     return max(0.0001, math.log((DOC_COUNT - df + 0.5) / (df + 0.5) + 1))
-
 
 class SearchService:
     @staticmethod
@@ -168,15 +168,15 @@ class SearchService:
         q_tokens = tokenize(query)
         doc_tokens = tokenize(doc_title + " " + doc_desc)
         doc_len = len(doc_tokens)
-
+        
         f_store = {}
         for t in doc_tokens:
-            f_store[t] = f_store.get(t, 0) + 1
-
+            f_store[t] = f_store.get(t,0) + 1
+            
         k1 = 1.2
         b = 0.75
         score = 0.0
-
+        
         for term in q_tokens:
             if term in f_store:
                 tf = f_store[term]
@@ -184,7 +184,7 @@ class SearchService:
                 tf_num = tf * (k1 + 1)
                 tf_den = tf + k1 * (1 - b + b * (doc_len / AVG_DOC_LENGTH))
                 score += idf * (tf_num / tf_den)
-
+                
         return round(score, 3)
 
     @staticmethod
@@ -193,42 +193,48 @@ class SearchService:
         p_tokens = tokenize(doc_title + " " + doc_desc)
         if not q_tokens or not p_tokens:
             return {"cosine": 0.0, "tfidf": 0.0}
-
+            
         vocab = list(set(q_tokens + p_tokens))
         q_tf = {}
         p_tf = {}
-
-        for t in q_tokens:
-            q_tf[t] = q_tf.get(t, 0) + 1
-        for t in p_tokens:
-            p_tf[t] = p_tf.get(t, 0) + 1
-
+        
+        for t in q_tokens: q_tf[t] = q_tf.get(t, 0) + 1
+        for t in p_tokens: p_tf[t] = p_tf.get(t, 0) + 1
+        
         dot_product = 0.0
         q_norm_sq = 0.0
         p_norm_sq = 0.0
         total_p_tfidf = 0.0
-
+        
         for term in vocab:
             idf = calculate_idf(term)
             q_val = q_tf.get(term, 0) * idf
             p_val = p_tf.get(term, 0) * idf
-
+            
             dot_product += q_val * p_val
             q_norm_sq += q_val * q_val
             p_norm_sq += p_val * p_val
-
+            
             if term in q_tf:
                 total_p_tfidf += p_val
-
+                
         q_norm = math.sqrt(q_norm_sq)
         p_norm = math.sqrt(p_norm_sq)
         cosine = (dot_product / (q_norm * p_norm)) if (q_norm > 0 and p_norm > 0) else 0.0
-
-        return {"cosine": round(cosine, 3), "tfidf": round(total_p_tfidf, 3)}
+        
+        return {
+            "cosine": round(cosine, 3),
+            "tfidf": round(total_p_tfidf, 3)
+        }
 
     @staticmethod
     def fetch_candidate_documents(query: str) -> List[Dict[str, Any]]:
-        # Elasticsearch cluster querying logic with matching fallback
+        """
+        Retrieve candidate documents for ranking.
+
+        Production path: queries Elasticsearch with BM25 multi-match.
+        Fallback path: If ES is down, performs a SQL query against the real database (SQLite/PostgreSQL).
+        """
         if ES_AVAILABLE and es_client:
             try:
                 body = {
@@ -245,21 +251,75 @@ class SearchService:
                 candidates = []
                 for hit in res["hits"]["hits"]:
                     src = hit["_source"]
-                    candidates.append(
-                        {
-                            "id": src["id"],
-                            "title": src["title"],
-                            "description": src["description"],
-                            "category": src["category"],
-                            "popularity": src["popularity"],
-                            "ctr": src["ctr"],
-                            "freshness": src["freshness"],
-                            "engagement": src["engagement"],
-                        }
-                    )
+                    candidates.append({
+                        "id": src["id"],
+                        "title": src["title"],
+                        "description": src.get("description", ""),
+                        "category": src["category"],
+                        "popularity": src.get("popularity", 50.0),
+                        "ctr": src.get("ctr", 0.05),
+                        "freshness": src.get("freshness", 0.5),
+                        "engagement": src.get("engagement", 3.0),
+                    })
                 return candidates
-            except Exception as e:
-                logger.error(f"ES search failed, fallback: {e}")
+            except Exception as exc:
+                logger.error("Elasticsearch query failed, falling back to database query: %s", exc)
 
-        # Standard clean fallback array in case cluster process offline
-        return MOCK_PRODUCTS
+        # ES is down, retrieve candidates from the database (ProductModel)
+        try:
+            from backend.database.connection import SessionLocal
+            from backend.database.models import ProductModel
+            if SessionLocal is not None:
+                db = SessionLocal()
+                try:
+                    # Clean query tokens
+                    tokens = tokenize(query)
+                    if not tokens:
+                        # Return all products if query is empty
+                        results = db.query(ProductModel).limit(20).all()
+                    else:
+                        # Find products that contain any of the tokens in title or description
+                        all_prods = db.query(ProductModel).all()
+                        matched = []
+                        for p in all_prods:
+                            match_count = 0
+                            title_lower = p.title.lower()
+                            desc_lower = (p.description or "").lower()
+                            for t in tokens:
+                                if t in title_lower or t in desc_lower:
+                                    match_count += 1
+                            if match_count > 0:
+                                matched.append((match_count, p))
+                        
+                        # Sort by number of matching tokens
+                        matched.sort(key=lambda x: x[0], reverse=True)
+                        results = [item[1] for item in matched[:20]]
+                    
+                    if results:
+                        return [
+                            {
+                                "id": r.id,
+                                "title": r.title,
+                                "description": r.description or "",
+                                "category": r.category,
+                                "popularity": r.popularity,
+                                "ctr": r.ctr,
+                                "freshness": r.freshness,
+                                "engagement": r.engagement,
+                            }
+                            for r in results
+                        ]
+                finally:
+                    db.close()
+        except Exception as db_exc:
+            logger.error("Database query fallback failed: %s", db_exc)
+
+        # If even DB query fails and we are in test mode, return MOCK_PRODUCTS
+        if settings.is_testing:
+            logger.warning("TESTING=true — Elasticsearch and Database both down, using MOCK_PRODUCTS.")
+            return MOCK_PRODUCTS
+
+        raise RuntimeError(
+            "Both Elasticsearch and Database candidate retrieval paths failed. "
+            "Ensure the database is running and has been seeded."
+        )

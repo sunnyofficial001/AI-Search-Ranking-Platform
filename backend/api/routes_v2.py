@@ -12,61 +12,56 @@ Extended routes covering:
   - Data pipeline triggers
 """
 
-import datetime
-import random
-import time
-from typing import Any, Dict, List, Optional
+# IMPORTANT: import lightgbm before xgboost/torch to prevent Windows OpenMP DLL conflict
+try:
+    import lightgbm as _lgb  # noqa: F401
+except ImportError:
+    pass
 
-from fastapi import APIRouter, HTTPException, Query
+import random
+import datetime
+import time
+import json
+from fastapi import APIRouter, HTTPException, Query, Header
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from backend.ab_testing.ab_testing import ExperimentManager
-from backend.database.connection import SessionLocal
-from backend.database.models import SearchQueryLogModel
-from backend.drift_detection.drift_monitor import DriftMonitor
-from backend.explainability.explain import ShapExplainer
-from backend.feature_store.feature_store import (
-    DataLineageTracker,
-    OfflineFeaturePipeline,
-    OnlineFeatureStore,
-)
-from backend.model_registry.model_registry import ModelRegistry, ModelStage, ModelType
-from backend.monitoring.monitoring import HealthChecker, MetricsRegistry, SLAMonitor
-
-# Legacy schemas
-from backend.schemas.schemas import (
-    ContributionItem,
-    ExperimentDashboardResponse,
-    ExperimentRunRequest,
-    ExperimentRunResponse,
-    ExplainRequest,
-    ExplainResponse,
-    RecommendItem,
-    RecommendRequest,
-    RecommendResponse,
-    SearchRequest,
-    SearchResponse,
-    SearchResultItem,
-)
-from backend.services.advanced_recommend import (
-    AdvancedRecommendService,
-    RecommendationType,
-    UserSession,
-)
-from backend.services.cache_service import CacheService
+# Core services
+from backend.services.search_service import SearchService, MOCK_PRODUCTS
+from backend.services.recommend_service import RecommendService, USER_RATING_MATRIX
 from backend.services.mlflow_service import MLflowService
+from backend.services.cache_service import CacheService
+from backend.explainability.explain import ShapExplainer
+from backend.evaluation.evaluate import Evaluator
+from backend.training.train_pipeline import FeatureExtractor
 
 # New production services
 from backend.services.ranking_engine import (
-    MultiStageRankingPipeline,
-    RankingContext,
-    RankingEvaluator,
+    MultiStageRankingPipeline, RankingContext, RankingAlgorithm,
+    RankingEvaluator, RankingCandidate,
 )
-from backend.services.recommend_service import USER_RATING_MATRIX, RecommendService
+from backend.services.advanced_recommend import (
+    AdvancedRecommendService, RecommendationType, UserSession,
+    ITEM_CATALOG, ITEM_BY_ID,
+)
+from backend.feature_store.feature_store import (
+    OnlineFeatureStore, OfflineFeaturePipeline, DataLineageTracker,
+)
+from backend.drift_detection.drift_monitor import DriftMonitor, StatisticalTests
+from backend.ab_testing.ab_testing import ExperimentManager, ExperimentStatus
+from backend.model_registry.model_registry import ModelRegistry, ModelStage, ModelType
+from backend.monitoring.monitoring import MetricsRegistry, SLAMonitor, HealthChecker
+from backend.core import settings
 
-# Core services
-from backend.services.search_service import MOCK_PRODUCTS, SearchService
-from backend.training.train_pipeline import FeatureExtractor
+# Legacy schemas
+from backend.schemas.schemas import (
+    SearchRequest, SearchResponse, SearchResultItem,
+    RecommendRequest, RecommendResponse, RecommendItem,
+    ExplainRequest, ExplainResponse, ContributionItem,
+    ExperimentRunRequest, ExperimentRunResponse, ExperimentDashboardResponse,
+)
+from backend.database.connection import SessionLocal
+from backend.database.models import SearchQueryLogModel
 
 router = APIRouter()
 
@@ -74,7 +69,6 @@ router = APIRouter()
 # ============================================================
 # PYDANTIC REQUEST/RESPONSE SCHEMAS (v2 endpoints)
 # ============================================================
-
 
 class RankingRequest(BaseModel):
     query: str
@@ -128,7 +122,6 @@ class DataPipelineRequest(BaseModel):
 # SYSTEM ENDPOINTS
 # ============================================================
 
-
 @router.get("/health", tags=["System"])
 def health_endpoint():
     """Basic health check — fast response for load balancer probes."""
@@ -171,14 +164,12 @@ def metrics_endpoint():
 def prometheus_metrics_endpoint():
     """Raw Prometheus text-format metrics (scrape endpoint)."""
     from fastapi.responses import PlainTextResponse
-
     return PlainTextResponse(MetricsRegistry.prometheus_format(), media_type="text/plain")
 
 
 # ============================================================
 # LEGACY SEARCH (v1 compatible)
 # ============================================================
-
 
 @router.post("/search", response_model=SearchResponse, tags=["Search Engine"])
 def search_endpoint(req: SearchRequest):
@@ -212,55 +203,33 @@ def search_endpoint(req: SearchRequest):
         vecs = SearchService.calculate_tfidf_and_cosine(req.query, p["title"], p["description"])
 
         features = {
-            "bm25": bm25,
-            "tfidf": vecs["tfidf"],
-            "cosine": vecs["cosine"],
+            "bm25": bm25, "tfidf": vecs["tfidf"], "cosine": vecs["cosine"],
             "queryLength": float(len(req.query.split())),
             "docLength": float(len((p["title"] + " " + p["description"]).split())),
-            "popularity": float(p["popularity"]),
-            "ctr": float(p["ctr"]),
-            "freshness": float(p["freshness"]),
-            "engagement": float(p["engagement"]),
+            "popularity": float(p["popularity"]), "ctr": float(p["ctr"]),
+            "freshness": float(p["freshness"]), "engagement": float(p["engagement"]),
         }
 
         pointwise = bm25 * 0.35 + vecs["cosine"] * 0.15 + p["ctr"] * 10 * 0.12 + p["popularity"] / 100 * 0.10
         if req.weights:
             pointwise = (
-                bm25 * req.weights.get("bm25", 0.35)
-                + vecs["cosine"] * req.weights.get("cosine", 0.10)
-                + p["ctr"] * 10 * req.weights.get("ctr", 0.12)
-                + (p["popularity"] / 100) * req.weights.get("popularity", 0.10)
+                bm25 * req.weights.get("bm25", 0.35) +
+                vecs["cosine"] * req.weights.get("cosine", 0.10) +
+                p["ctr"] * 10 * req.weights.get("ctr", 0.12) +
+                (p["popularity"] / 100) * req.weights.get("popularity", 0.10)
             )
         pairwise = bm25 * 0.40 + vecs["cosine"] * 0.20 + p["ctr"] * 15 * 0.25
-        listwise = max(
-            0.0,
-            0.20
-            + (0.45 if bm25 >= 1.5 else -0.20)
-            + (0.35 if p["ctr"] >= 0.10 else -0.10)
-            + vecs["cosine"] * 0.25
-            + p["engagement"] / 15,
-        )
+        listwise = max(0.0, 0.20 + (0.45 if bm25 >= 1.5 else -0.20) + (0.35 if p["ctr"] >= 0.10 else -0.10) + vecs["cosine"] * 0.25 + p["engagement"] / 15)
 
         q_tokens = req.query.lower().split()
         matched = sum(1 for t in q_tokens if t in (p["title"] + " " + p["description"]).lower())
         rel_label = 4 if matched >= 3 else 3 if matched == 2 else 2 if matched == 1 else (1 if p["ctr"] > 0.15 else 0)
 
-        results.append(
-            SearchResultItem(
-                productId=p["id"],
-                title=p["title"],
-                category=p["category"],
-                scores={
-                    "pointwise": round(pointwise, 3),
-                    "pairwise": round(pairwise, 3),
-                    "listwise": round(listwise, 3),
-                },
-                originalRank=1,
-                finalRank=1,
-                relevanceLabel=rel_label,
-                features=features,
-            )
-        )
+        results.append(SearchResultItem(
+            productId=p["id"], title=p["title"], category=p["category"],
+            scores={"pointwise": round(pointwise, 3), "pairwise": round(pairwise, 3), "listwise": round(listwise, 3)},
+            originalRank=1, finalRank=1, relevanceLabel=rel_label, features=features,
+        ))
 
     org_sorted = sorted(results, key=lambda x: x.features["bm25"], reverse=True)
     for i, item in enumerate(org_sorted):
@@ -274,14 +243,12 @@ def search_endpoint(req: SearchRequest):
 
     try:
         db = SessionLocal()
-        db.add(
-            SearchQueryLogModel(
-                query_text=req.query,
-                algorithm_used="listwise_lambdamart",
-                weights_applied=req.weights or {},
-                execution_time_ms=execution_time,
-            )
-        )
+        db.add(SearchQueryLogModel(
+            query_text=req.query,
+            algorithm_used="listwise_lambdamart",
+            weights_applied=req.weights or {},
+            execution_time_ms=execution_time,
+        ))
         db.commit()
     except Exception:
         pass
@@ -297,7 +264,6 @@ def search_endpoint(req: SearchRequest):
 # ============================================================
 # ADVANCED SEARCH — Multi-Stage Ranking (v2)
 # ============================================================
-
 
 @router.post("/v2/search", tags=["Search Engine v2"])
 def advanced_search_endpoint(req: RankingRequest):
@@ -372,7 +338,6 @@ def advanced_search_endpoint(req: RankingRequest):
 # LEGACY RECOMMEND (v1 compatible)
 # ============================================================
 
-
 @router.post("/recommend", response_model=RecommendResponse, tags=["Recommendation Engine"])
 def recommend_endpoint(req: RecommendRequest):
     """Legacy recommendation endpoint."""
@@ -392,16 +357,11 @@ def recommend_endpoint(req: RecommendRequest):
                 continue
             p_vector = q_mat.get(p["id"], [0.25] * req.latentDim)
             score = sum(u_vector[k] * p_vector[k] for k in range(req.latentDim))
-            results.append(
-                RecommendItem(
-                    productId=p["id"],
-                    title=p["title"],
-                    category=p["category"],
-                    score=round(score / 5.0, 3),
-                    type="matrix_factorization",
-                    breakdown=f"Factored dot product pred: {score:.2f}.",
-                )
-            )
+            results.append(RecommendItem(
+                productId=p["id"], title=p["title"], category=p["category"],
+                score=round(score / 5.0, 3), type="matrix_factorization",
+                breakdown=f"Factored dot product pred: {score:.2f}.",
+            ))
         results.sort(key=lambda x: x.score, reverse=True)
         return RecommendResponse(type="matrix_factorization", results=results[:4], losses=losses)
     else:
@@ -409,12 +369,8 @@ def recommend_endpoint(req: RecommendRequest):
 
     res_items = [
         RecommendItem(
-            productId=item["productId"],
-            title=item["title"],
-            category=item["category"],
-            score=item["score"],
-            type=item["type"],
-            breakdown=item["breakdown"],
+            productId=item["productId"], title=item["title"], category=item["category"],
+            score=item["score"], type=item["type"], breakdown=item["breakdown"],
         )
         for item in items
     ]
@@ -424,7 +380,6 @@ def recommend_endpoint(req: RecommendRequest):
 # ============================================================
 # ADVANCED RECOMMENDATIONS (v2)
 # ============================================================
-
 
 @router.post("/v2/recommend", tags=["Recommendation Engine v2"])
 def advanced_recommend_endpoint(req: AdvancedRecommendRequest):
@@ -468,7 +423,6 @@ def advanced_recommend_endpoint(req: AdvancedRecommendRequest):
 # FEATURE STORE ENDPOINTS
 # ============================================================
 
-
 @router.get("/feature-store/catalog", tags=["Feature Store"])
 def feature_catalog_endpoint():
     """Return full feature catalog with specs, types, and lineage."""
@@ -492,7 +446,6 @@ def compute_features_endpoint(query: str = Query(...), doc_id: str = Query(...))
 
     # Validate features
     from backend.feature_store.feature_store import FeatureValidator
-
     is_valid, errors = FeatureValidator.validate(features)
 
     return {
@@ -509,8 +462,8 @@ def compute_features_endpoint(query: str = Query(...), doc_id: str = Query(...))
 def lineage_endpoint(pipeline_name: Optional[str] = Query(None)):
     """Return data lineage for feature computation pipelines."""
     lineage = DataLineageTracker.get_lineage(pipeline_name)
-    if not lineage:
-        # Seed some lineage records for demo
+    if not lineage and settings.is_testing:
+        # Seed canonical lineage records only in local testing environments.
         DataLineageTracker.record(
             pipeline_name="offline_feature_computation",
             run_id="pipeline-001",
@@ -523,30 +476,27 @@ def lineage_endpoint(pipeline_name: Optional[str] = Query(None)):
             pipeline_name="behavioral_feature_aggregation",
             run_id="pipeline-002",
             input_datasets=["ClickstreamLog-2026-06"],
-            output_features=[
-                "ctr_7d",
-                "ctr_30d",
-                "dwell_time_median_seconds",
-                "purchase_rate",
-            ],
+            output_features=["ctr_7d", "ctr_30d", "dwell_time_median_seconds", "purchase_rate"],
             row_count=1200000,
             duration_ms=18420.0,
         )
         lineage = DataLineageTracker.get_lineage(pipeline_name)
-    return {"lineage": lineage}
+    return {"lineage": lineage or []}
 
 
 # ============================================================
 # DRIFT DETECTION
 # ============================================================
 
-
 @router.get("/drift/report", tags=["Drift Detection"])
 def drift_report_endpoint():
     """Run full drift detection report across all monitored features."""
     report = DriftMonitor.run_full_drift_report()
     # Update Prometheus gauge
-    max_psi = max((v["psi"] for v in report["features"].values() if "psi" in v), default=0.0)
+    max_psi = max(
+        (v["psi"] for v in report["features"].values() if "psi" in v),
+        default=0.0
+    )
     MetricsRegistry.set_gauge("drift_psi_score", max_psi)
 
     if report["retraining_recommended"]:
@@ -579,56 +529,22 @@ def record_drift_observation(feature_name: str = Query(...), value: float = Quer
 # A/B TESTING
 # ============================================================
 
-
-@router.get(
-    "/experiments",
-    response_model=ExperimentDashboardResponse,
-    tags=["MLflow Dashboard"],
-)
+@router.get("/experiments", response_model=ExperimentDashboardResponse, tags=["MLflow Dashboard"])
 def experiments_dashboard_endpoint():
     """Legacy MLflow experiment dashboard."""
     runs = MLflowService.get_all_runs()
     registry = [
-        {
-            "modelName": "LambdaMART-LTR-Production",
-            "version": "v1.3.0",
-            "accuracy": "0.92 NDCG@10",
-            "status": "Active",
-        },
-        {
-            "modelName": "Ensemble-Ranker",
-            "version": "v1.0.0",
-            "accuracy": "0.93 NDCG@10",
-            "status": "Active",
-        },
-        {
-            "modelName": "MatrixFactorization-Recs",
-            "version": "v2.1.0",
-            "accuracy": "0.87 Precision@5",
-            "status": "Active",
-        },
-        {
-            "modelName": "RankNet-Pairwise",
-            "version": "v1.0.0-canary",
-            "accuracy": "0.88 NDCG@10",
-            "status": "Canary (10%)",
-        },
-        {
-            "modelName": "TwoTower-Recommender",
-            "version": "v1.0.0",
-            "accuracy": "0.90 NDCG@10",
-            "status": "Shadow",
-        },
+        {"modelName": "LambdaMART-LTR-Production", "version": "v1.3.0", "accuracy": "0.92 NDCG@10", "status": "Active"},
+        {"modelName": "Ensemble-Ranker", "version": "v1.0.0", "accuracy": "0.93 NDCG@10", "status": "Active"},
+        {"modelName": "MatrixFactorization-Recs", "version": "v2.1.0", "accuracy": "0.87 Precision@5", "status": "Active"},
+        {"modelName": "RankNet-Pairwise", "version": "v1.0.0-canary", "accuracy": "0.88 NDCG@10", "status": "Canary (10%)"},
+        {"modelName": "TwoTower-Recommender", "version": "v1.0.0", "accuracy": "0.90 NDCG@10", "status": "Shadow"},
     ]
     formatted_runs = [
         ExperimentRunResponse(
-            runId=r["runId"],
-            name=r["name"],
-            timestamp=r["timestamp"],
-            algorithm=r["algorithm"],
-            parameters=r["parameters"],
-            metrics=r["metrics"],
-            status=r["status"],
+            runId=r["runId"], name=r["name"], timestamp=r["timestamp"],
+            algorithm=r["algorithm"], parameters=r["parameters"],
+            metrics=r["metrics"], status=r["status"],
         )
         for r in runs
     ]
@@ -639,7 +555,10 @@ def experiments_dashboard_endpoint():
 def list_ab_tests_endpoint():
     """List all A/B experiments with their current status."""
     experiments = ExperimentManager.list_experiments()
-    MetricsRegistry.set_gauge("active_ab_experiments", sum(1 for e in experiments if e["status"] == "running"))
+    MetricsRegistry.set_gauge(
+        "active_ab_experiments",
+        sum(1 for e in experiments if e["status"] == "running")
+    )
     return {"experiments": experiments, "total": len(experiments)}
 
 
@@ -652,16 +571,14 @@ def analyze_ab_test_endpoint(experiment_id: str):
 @router.post("/ab-tests", tags=["A/B Testing"])
 def create_ab_test_endpoint(req: ExperimentCreateRequest):
     """Create and launch a new A/B experiment."""
-    exp = ExperimentManager.create_experiment(
-        {
-            "name": req.name,
-            "description": req.description,
-            "primary_metric": req.primary_metric,
-            "guardrail_metrics": req.guardrail_metrics,
-            "min_sample_size": req.min_sample_size,
-            "variants": req.variants,
-        }
-    )
+    exp = ExperimentManager.create_experiment({
+        "name": req.name,
+        "description": req.description,
+        "primary_metric": req.primary_metric,
+        "guardrail_metrics": req.guardrail_metrics,
+        "min_sample_size": req.min_sample_size,
+        "variants": req.variants,
+    })
     return {
         "experiment_id": exp.id,
         "name": exp.name,
@@ -677,17 +594,12 @@ def get_variant_assignment_endpoint(experiment_id: str, user_id: str = Query(...
     variant_id = ExperimentManager.get_variant_assignment(experiment_id, user_id)
     if not variant_id:
         raise HTTPException(status_code=404, detail="Experiment not found or not running")
-    return {
-        "experiment_id": experiment_id,
-        "user_id": user_id,
-        "variant_id": variant_id,
-    }
+    return {"experiment_id": experiment_id, "user_id": user_id, "variant_id": variant_id}
 
 
 # ============================================================
 # MODEL REGISTRY
 # ============================================================
-
 
 @router.get("/model-registry", tags=["Model Registry"])
 def list_models_endpoint(
@@ -701,7 +613,10 @@ def list_models_endpoint(
     return {
         "models": models,
         "total": len(models),
-        "by_stage": {stage.value: sum(1 for m in models if m["stage"] == stage.value) for stage in ModelStage},
+        "by_stage": {
+            stage.value: sum(1 for m in models if m["stage"] == stage.value)
+            for stage in ModelStage
+        },
     }
 
 
@@ -762,23 +677,16 @@ def retraining_queue_endpoint():
 # LEGACY ENDPOINTS (unchanged)
 # ============================================================
 
-
 @router.post("/explain", response_model=ExplainResponse, tags=["Explainable AI"])
 def explain_endpoint(req: ExplainRequest):
     data = ShapExplainer.explain_product_ranking(req.productId, req.query)
     contribs = [
-        ContributionItem(
-            feature=c["feature"],
-            value=float(c["value"]),
-            shapleyValue=float(c["shapleyValue"]),
-        )
+        ContributionItem(feature=c["feature"], value=float(c["value"]), shapleyValue=float(c["shapleyValue"]))
         for c in data["contributions"]
     ]
     return ExplainResponse(
-        productId=data["productId"],
-        productTitle=data["productTitle"],
-        baseValue=data["baseValue"],
-        finalScore=data["finalScore"],
+        productId=data["productId"], productTitle=data["productTitle"],
+        baseValue=data["baseValue"], finalScore=data["finalScore"],
         contributions=contribs,
     )
 
@@ -786,21 +694,13 @@ def explain_endpoint(req: ExplainRequest):
 @router.post("/rank/train", response_model=ExperimentRunResponse, tags=["MLOps Pipelines"])
 def train_endpoint(req: ExperimentRunRequest):
     run_id = f"run-{random.randint(1000, 9999)}"
-    datetime.datetime.utcnow().isoformat() + "Z"
+    timestamp_str = datetime.datetime.utcnow().isoformat() + "Z"
 
     if req.algorithm == "pairwise_ranknet":
         lr = req.learningRate or 0.02
         epochs = req.epochs or 50
         history = [0.18 + 1.07 * ((epochs - e) / epochs) + random.uniform(0.0, 0.03) for e in range(1, epochs + 1)]
-        metrics = {
-            "ndcg5": 0.76,
-            "ndcg10": 0.82,
-            "map": 0.73,
-            "mrr": 0.79,
-            "precision5": 0.66,
-            "recall5": 0.76,
-            "loss": round(history[-1], 4),
-        }
+        metrics = {"ndcg5": 0.76, "ndcg10": 0.82, "map": 0.73, "mrr": 0.79, "precision5": 0.66, "recall5": 0.76, "loss": round(history[-1], 4)}
         params = {"learning_rate": lr, "epochs": epochs}
     elif req.algorithm == "listwise_lambdamart":
         n_est = req.nEstimators or 20
@@ -808,44 +708,17 @@ def train_endpoint(req: ExperimentRunRequest):
         ndcg_prog = 0.61
         for i in range(1, n_est + 1):
             ndcg_prog = min(0.88, ndcg_prog + 0.05 * lr + random.uniform(0.0, 0.01))
-        metrics = {
-            "ndcg5": round(ndcg_prog, 4),
-            "ndcg10": round(ndcg_prog + 0.04, 4),
-            "map": 0.84,
-            "mrr": 0.90,
-            "precision5": 0.78,
-            "recall5": 0.82,
-            "loss": 0.14,
-        }
+        metrics = {"ndcg5": round(ndcg_prog, 4), "ndcg10": round(ndcg_prog + 0.04, 4), "map": 0.84, "mrr": 0.90, "precision5": 0.78, "recall5": 0.82, "loss": 0.14}
         params = {"n_estimators": n_est, "learning_rate": lr}
     else:
-        metrics = {
-            "ndcg5": 0.69,
-            "ndcg10": 0.75,
-            "map": 0.66,
-            "mrr": 0.71,
-            "precision5": 0.61,
-            "recall5": 0.73,
-            "loss": 0.52,
-        }
+        metrics = {"ndcg5": 0.69, "ndcg10": 0.75, "map": 0.66, "mrr": 0.71, "precision5": 0.61, "recall5": 0.73, "loss": 0.52}
         params = {"static_weights": "MSLR-default"}
 
-    run_data = MLflowService.log_run(
-        run_id,
-        f"train_{req.algorithm}_{run_id}",
-        req.algorithm,
-        params,
-        metrics,
-        "SUCCESS",
-    )
+    run_data = MLflowService.log_run(run_id, f"train_{req.algorithm}_{run_id}", req.algorithm, params, metrics, "SUCCESS")
     return ExperimentRunResponse(
-        runId=run_data["runId"],
-        name=run_data["name"],
-        timestamp=run_data["timestamp"],
-        algorithm=run_data["algorithm"],
-        parameters=run_data["parameters"],
-        metrics=run_data["metrics"],
-        status=run_data["status"],
+        runId=run_data["runId"], name=run_data["name"], timestamp=run_data["timestamp"],
+        algorithm=run_data["algorithm"], parameters=run_data["parameters"],
+        metrics=run_data["metrics"], status=run_data["status"],
     )
 
 
@@ -861,10 +734,19 @@ def delete_experiment_endpoint(runId: str):
 # DATA PIPELINE ENDPOINTS
 # ============================================================
 
-
 @router.post("/pipeline/run", tags=["Data Engineering"])
 def run_pipeline_endpoint(req: DataPipelineRequest):
-    """Trigger an offline feature computation pipeline run."""
+    """Trigger an offline feature computation pipeline run.
+
+    This endpoint is test-only because the repository does not include a real
+    batch orchestration system or production feature jobs yet.
+    """
+    if not settings.is_testing and settings.is_production:
+        raise HTTPException(
+            status_code=501,
+            detail="This pipeline endpoint is test-only in production.",
+        )
+
     t0 = time.time()
 
     if req.dry_run:
@@ -875,8 +757,9 @@ def run_pipeline_endpoint(req: DataPipelineRequest):
             "estimated_duration_ms": req.batch_size * 0.5,
         }
 
-    # Simulate batch feature computation
+    # Deterministic test-only batch feature computation
     processed = 0
+    all_features_computed = []
     sample_queries = ["laptop", "headphones", "running shoes", "backpack", "charger"]
 
     for i in range(min(req.batch_size, len(MOCK_PRODUCTS) * len(sample_queries))):
@@ -895,15 +778,8 @@ def run_pipeline_endpoint(req: DataPipelineRequest):
         pipeline_name=req.pipeline_name,
         run_id=f"run-{int(t0)}",
         input_datasets=["MOCK_PRODUCTS", "SearchQueryLog"],
-        output_features=[
-            "bm25_score",
-            "tfidf_cosine",
-            "ctr_7d",
-            "freshness_score",
-            "popularity_score",
-            "avg_rating",
-            "query_term_coverage",
-        ],
+        output_features=["bm25_score", "tfidf_cosine", "ctr_7d", "freshness_score",
+                         "popularity_score", "avg_rating", "query_term_coverage"],
         row_count=processed,
         duration_ms=duration_ms,
     )
@@ -928,7 +804,6 @@ def pipeline_lineage_endpoint():
 # SEARCH ANALYTICS
 # ============================================================
 
-
 @router.get("/analytics/search", tags=["Analytics"])
 def search_analytics_endpoint():
     """Search analytics: query volume, latency distribution, top queries."""
@@ -937,27 +812,17 @@ def search_analytics_endpoint():
 
     return {
         "search": {
-            "total_queries": int(
-                MetricsRegistry._metrics.get("search_queries_total", type("", (), {"value": 0})()).value
-            )
-            if "search_queries_total" in MetricsRegistry._metrics
-            else 0,
+            "total_queries": int(MetricsRegistry._metrics.get("search_queries_total", type("", (), {"value": 0})()).value) if "search_queries_total" in MetricsRegistry._metrics else 0,
             "latency_percentiles": latency_stats,
         },
         "recommendations": {
-            "total_requests": int(
-                MetricsRegistry._metrics.get("recommendation_requests_total", type("", (), {"value": 0})()).value
-            )
-            if "recommendation_requests_total" in MetricsRegistry._metrics
-            else 0,
+            "total_requests": int(MetricsRegistry._metrics.get("recommendation_requests_total", type("", (), {"value": 0})()).value) if "recommendation_requests_total" in MetricsRegistry._metrics else 0,
             "latency_percentiles": rec_stats,
         },
         "feature_cache": OnlineFeatureStore.cache_stats(),
         "sla": SLAMonitor.check_sla(),
         "model_performance": {
-            "online_ndcg10": MetricsRegistry._metrics.get("ndcg_at_10_online", type("", (), {"value": 0})()).value
-            if "ndcg_at_10_online" in MetricsRegistry._metrics
-            else 0.0,
+            "online_ndcg10": MetricsRegistry._metrics.get("ndcg_at_10_online", type("", (), {"value": 0})()).value if "ndcg_at_10_online" in MetricsRegistry._metrics else 0.0,
         },
     }
 
@@ -970,39 +835,27 @@ def ranking_analytics_endpoint():
         "algorithm_comparison": [
             {
                 "algorithm": "Pointwise (XGBoost)",
-                "ndcg_at_5": 0.692,
-                "ndcg_at_10": 0.751,
-                "map": 0.664,
-                "mrr": 0.712,
-                "avg_latency_ms": 8.2,
-                "p99_latency_ms": 22.1,
+                "ndcg_at_5": 0.692, "ndcg_at_10": 0.751,
+                "map": 0.664, "mrr": 0.712,
+                "avg_latency_ms": 8.2, "p99_latency_ms": 22.1,
             },
             {
                 "algorithm": "Pairwise (RankNet)",
-                "ndcg_at_5": 0.756,
-                "ndcg_at_10": 0.812,
-                "map": 0.724,
-                "mrr": 0.783,
-                "avg_latency_ms": 18.5,
-                "p99_latency_ms": 42.7,
+                "ndcg_at_5": 0.756, "ndcg_at_10": 0.812,
+                "map": 0.724, "mrr": 0.783,
+                "avg_latency_ms": 18.5, "p99_latency_ms": 42.7,
             },
             {
                 "algorithm": "Listwise (LambdaMART)",
-                "ndcg_at_5": 0.882,
-                "ndcg_at_10": 0.921,
-                "map": 0.834,
-                "mrr": 0.892,
-                "avg_latency_ms": 12.3,
-                "p99_latency_ms": 28.4,
+                "ndcg_at_5": 0.882, "ndcg_at_10": 0.921,
+                "map": 0.834, "mrr": 0.892,
+                "avg_latency_ms": 12.3, "p99_latency_ms": 28.4,
             },
             {
                 "algorithm": "Ensemble (Stacked)",
-                "ndcg_at_5": 0.901,
-                "ndcg_at_10": 0.934,
-                "map": 0.871,
-                "mrr": 0.908,
-                "avg_latency_ms": 24.6,
-                "p99_latency_ms": 58.2,
+                "ndcg_at_5": 0.901, "ndcg_at_10": 0.934,
+                "map": 0.871, "mrr": 0.908,
+                "avg_latency_ms": 24.6, "p99_latency_ms": 58.2,
             },
         ],
         "feature_importance": ShapExplainer.get_global_feature_importances(),

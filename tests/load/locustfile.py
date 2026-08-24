@@ -19,10 +19,11 @@ Scenarios:
   - MLOpsUser: drift/metrics/registry polling (10% of users)
 """
 
+import json
 import random
-
-from locust import HttpUser, between, events, tag, task
+from locust import HttpUser, task, between, constant_pacing, events, tag
 from locust.exception import RescheduleTask
+
 
 # ─────────────────────────────────────────────
 # Test Data
@@ -47,7 +48,9 @@ USER_IDS = [f"user-{i}" for i in range(1, 6)]
 
 ITEM_IDS = [f"prod-{i}" for i in range(1, 11)]
 
-REC_TYPES = ["session_based", "two_tower", "cold_start", "item2vec", "hybrid"]
+REC_TYPES = [
+    "session_based", "two_tower", "cold_start", "item2vec", "hybrid"
+]
 
 SESSION_SEQUENCES = [
     ["prod-1", "prod-5"],
@@ -63,10 +66,8 @@ FEATURE_NAMES = ["bm25_score", "ctr_7d", "freshness_score", "popularity_score"]
 # User: Search-heavy (70% weight)
 # ─────────────────────────────────────────────
 
-
 class SearchUser(HttpUser):
     """Simulates a user primarily doing search queries."""
-
     weight = 70
     wait_time = between(0.5, 2.0)
 
@@ -169,10 +170,8 @@ class SearchUser(HttpUser):
 # User: Recommendation-heavy (20% weight)
 # ─────────────────────────────────────────────
 
-
 class RecommendUser(HttpUser):
     """Simulates a user browsing recommendations."""
-
     weight = 20
     wait_time = between(1.0, 3.0)
 
@@ -266,10 +265,8 @@ class RecommendUser(HttpUser):
 # User: MLOps / Monitoring (10% weight)
 # ─────────────────────────────────────────────
 
-
 class MLOpsUser(HttpUser):
     """Simulates ML engineers polling dashboards and monitoring."""
-
     weight = 10
     wait_time = between(5.0, 15.0)
 
@@ -384,36 +381,26 @@ sla_violations = []
 
 
 @events.request.add_listener
-def on_request(
-    request_type,
-    name,
-    response_time,
-    response_length,
-    response,
-    context,
-    exception,
-    **kwargs,
-):
+def on_request(request_type, name, response_time, response_length, response,
+               context, exception, **kwargs):
     """Track SLA violations across all requests."""
     if exception:
         return
     limit = SLA_LIMITS_MS.get(name)
     if limit and response_time > limit:
-        sla_violations.append(
-            {
-                "endpoint": name,
-                "response_time_ms": round(response_time, 2),
-                "sla_limit_ms": limit,
-                "violation_ms": round(response_time - limit, 2),
-            }
-        )
+        sla_violations.append({
+            "endpoint": name,
+            "response_time_ms": round(response_time, 2),
+            "sla_limit_ms": limit,
+            "violation_ms": round(response_time - limit, 2),
+        })
 
 
 @events.quitting.add_listener
 def on_quitting(environment, **kwargs):
     """Print SLA violation summary at end of test."""
     if sla_violations:
-        print(f"\n{'=' * 60}")
+        print(f"\n{'='*60}")
         print(f"SLA VIOLATIONS: {len(sla_violations)}")
         by_endpoint = {}
         for v in sla_violations:
@@ -422,6 +409,6 @@ def on_quitting(environment, **kwargs):
         for ep, violations in by_endpoint.items():
             avg = sum(violations) / len(violations)
             print(f"  {ep}: {len(violations)} violations, avg +{avg:.1f}ms over SLA")
-        print(f"{'=' * 60}\n")
+        print(f"{'='*60}\n")
     else:
         print("\n✓ No SLA violations detected\n")

@@ -1,9 +1,6 @@
 import unittest
-
 from fastapi.testclient import TestClient
-
 from backend.main import app
-
 
 class TestAPIIntegration(unittest.TestCase):
     def setUp(self):
@@ -19,7 +16,12 @@ class TestAPIIntegration(unittest.TestCase):
     def test_search_retrieval(self):
         payload = {
             "query": "smart speaker Alexa Dot",
-            "weights": {"bm25": 0.40, "cosine": 0.20, "ctr": 0.15, "popularity": 0.15},
+            "weights": {
+                "bm25": 0.40,
+                "cosine": 0.20,
+                "ctr": 0.15,
+                "popularity": 0.15
+            }
         }
         response = self.client.post("/api/v1/search", json=payload)
         self.assertEqual(response.status_code, 200)
@@ -27,7 +29,7 @@ class TestAPIIntegration(unittest.TestCase):
         self.assertEqual(data["query"], payload["query"])
         self.assertIn("expandedQuery", data)
         self.assertGreater(len(data["results"]), 0)
-
+        
         # Check model features registry structure
         first_item = data["results"][0]
         self.assertIn("productId", first_item)
@@ -35,7 +37,11 @@ class TestAPIIntegration(unittest.TestCase):
         self.assertIn("bm25", first_item["features"])
 
     def test_recommendation_filtering(self):
-        payload = {"userId": "user-1", "productId": "prod-1", "type": "content"}
+        payload = {
+            "userId": "user-1",
+            "productId": "prod-1",
+            "type": "content"
+        }
         response = self.client.post("/api/v1/recommend", json=payload)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -43,7 +49,10 @@ class TestAPIIntegration(unittest.TestCase):
         self.assertGreater(len(data["results"]), 0)
 
     def test_explain_shap(self):
-        payload = {"productId": "prod-3", "query": "noise canceling headphones"}
+        payload = {
+            "productId": "prod-3",
+            "query": "noise canceling headphones"
+        }
         response = self.client.post("/api/v1/explain", json=payload)
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -56,7 +65,7 @@ class TestAPIIntegration(unittest.TestCase):
         payload = {
             "algorithm": "listwise_lambdamart",
             "nEstimators": 10,
-            "learningRate": 0.05,
+            "learningRate": 0.05
         }
         response = self.client.post("/api/v1/rank/train", json=payload)
         self.assertEqual(response.status_code, 200)

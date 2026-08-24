@@ -5,18 +5,16 @@ Tests the full HTTP request/response cycle for all major API endpoints.
 Uses FastAPI's TestClient (no real server needed).
 """
 
-import os
 import sys
-
+import os
+import json
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 try:
     from fastapi.testclient import TestClient
-
     from backend.main import app
-
     client = TestClient(app)
     FASTAPI_AVAILABLE = True
 except Exception:
@@ -24,7 +22,10 @@ except Exception:
 
 
 # Skip all integration tests if FastAPI app can't be imported
-pytestmark = pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI app not importable in this environment")
+pytestmark = pytest.mark.skipif(
+    not FASTAPI_AVAILABLE,
+    reason="FastAPI app not importable in this environment"
+)
 
 
 class TestHealthEndpoints:
@@ -77,15 +78,12 @@ class TestSearchEndpoint:
         assert ranks == list(range(1, len(ranks) + 1))
 
     def test_v2_search_returns_pipeline_metadata(self):
-        resp = client.post(
-            "/api/v1/v2/search",
-            json={
-                "query": "headphones",
-                "algorithm": "ensemble",
-                "page": 1,
-                "page_size": 5,
-            },
-        )
+        resp = client.post("/api/v1/v2/search", json={
+            "query": "headphones",
+            "algorithm": "ensemble",
+            "page": 1,
+            "page_size": 5,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert "results" in data
@@ -94,19 +92,18 @@ class TestSearchEndpoint:
 
     def test_v2_search_all_algorithms(self):
         for algorithm in ["ensemble", "listwise_lambdamart", "pairwise_ranknet"]:
-            resp = client.post("/api/v1/v2/search", json={"query": "speaker", "algorithm": algorithm})
+            resp = client.post("/api/v1/v2/search", json={
+                "query": "speaker", "algorithm": algorithm
+            })
             assert resp.status_code == 200, f"Algorithm {algorithm} failed"
 
     def test_v2_search_with_personalization(self):
-        resp = client.post(
-            "/api/v1/v2/search",
-            json={
-                "query": "electronics",
-                "algorithm": "ensemble",
-                "user_id": "user-1",
-                "personalization_weight": 0.3,
-            },
-        )
+        resp = client.post("/api/v1/v2/search", json={
+            "query": "electronics",
+            "algorithm": "ensemble",
+            "user_id": "user-1",
+            "personalization_weight": 0.3,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert data["user_id"] == "user-1"
@@ -116,104 +113,80 @@ class TestRecommendEndpoint:
     """Test recommendation endpoints."""
 
     def test_collaborative_filtering_returns_items(self):
-        resp = client.post(
-            "/api/v1/recommend",
-            json={
-                "type": "collaborative",
-                "userId": "user-1",
-            },
-        )
+        resp = client.post("/api/v1/recommend", json={
+            "type": "collaborative",
+            "userId": "user-1",
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["results"]) > 0
 
     def test_content_based_returns_items(self):
-        resp = client.post(
-            "/api/v1/recommend",
-            json={
-                "type": "content",
-                "userId": "user-1",
-                "productId": "prod-3",
-            },
-        )
+        resp = client.post("/api/v1/recommend", json={
+            "type": "content",
+            "userId": "user-1",
+            "productId": "prod-3",
+        })
         assert resp.status_code == 200
         assert len(resp.json()["results"]) > 0
 
     def test_hybrid_returns_items(self):
-        resp = client.post(
-            "/api/v1/recommend",
-            json={
-                "type": "hybrid",
-                "userId": "user-2",
-                "productId": "prod-1",
-                "hybridWeight": 0.6,
-            },
-        )
+        resp = client.post("/api/v1/recommend", json={
+            "type": "hybrid",
+            "userId": "user-2",
+            "productId": "prod-1",
+            "hybridWeight": 0.6,
+        })
         assert resp.status_code == 200
         assert len(resp.json()["results"]) > 0
 
     def test_v2_session_based_recommend(self):
-        resp = client.post(
-            "/api/v1/v2/recommend",
-            json={
-                "rec_type": "session_based",
-                "user_id": "user-1",
-                "session_items": ["prod-1", "prod-5"],
-                "top_k": 5,
-            },
-        )
+        resp = client.post("/api/v1/v2/recommend", json={
+            "rec_type": "session_based",
+            "user_id": "user-1",
+            "session_items": ["prod-1", "prod-5"],
+            "top_k": 5,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert "items" in data
         assert "metadata" in data
 
     def test_v2_two_tower_recommend(self):
-        resp = client.post(
-            "/api/v1/v2/recommend",
-            json={
-                "rec_type": "two_tower",
-                "user_id": "user-3",
-                "top_k": 6,
-            },
-        )
+        resp = client.post("/api/v1/v2/recommend", json={
+            "rec_type": "two_tower",
+            "user_id": "user-3",
+            "top_k": 6,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["items"]) > 0
 
     def test_v2_cold_start_recommend(self):
-        resp = client.post(
-            "/api/v1/v2/recommend",
-            json={
-                "rec_type": "cold_start",
-                "top_k": 5,
-            },
-        )
+        resp = client.post("/api/v1/v2/recommend", json={
+            "rec_type": "cold_start",
+            "top_k": 5,
+        })
         assert resp.status_code == 200
         assert len(resp.json()["items"]) > 0
 
     def test_v2_item2vec_recommend(self):
-        resp = client.post(
-            "/api/v1/v2/recommend",
-            json={
-                "rec_type": "item2vec",
-                "item_id": "prod-3",
-                "top_k": 4,
-            },
-        )
+        resp = client.post("/api/v1/v2/recommend", json={
+            "rec_type": "item2vec",
+            "item_id": "prod-3",
+            "top_k": 4,
+        })
         assert resp.status_code == 200
         items = resp.json()["items"]
         # Should not include the seed item
         assert "prod-3" not in [i["item_id"] for i in items]
 
     def test_v2_recommend_has_diversity_metadata(self):
-        resp = client.post(
-            "/api/v1/v2/recommend",
-            json={
-                "rec_type": "hybrid",
-                "user_id": "user-1",
-                "apply_diversity": True,
-            },
-        )
+        resp = client.post("/api/v1/v2/recommend", json={
+            "rec_type": "hybrid",
+            "user_id": "user-1",
+            "apply_diversity": True,
+        })
         assert resp.status_code == 200
         meta = resp.json()["metadata"]
         assert "intra_list_diversity" in meta
@@ -294,30 +267,17 @@ class TestABTestingEndpoints:
         assert resp1.json()["variant_id"] == resp2.json()["variant_id"]
 
     def test_create_experiment(self):
-        resp = client.post(
-            "/api/v1/ab-tests",
-            json={
-                "name": "Integration Test Experiment",
-                "description": "Created by integration test",
-                "primary_metric": "ctr",
-                "guardrail_metrics": ["latency_p99"],
-                "min_sample_size": 500,
-                "variants": [
-                    {
-                        "id": "ctrl",
-                        "name": "Control",
-                        "type": "control",
-                        "traffic_fraction": 0.5,
-                    },
-                    {
-                        "id": "trt",
-                        "name": "Treatment",
-                        "type": "treatment",
-                        "traffic_fraction": 0.5,
-                    },
-                ],
-            },
-        )
+        resp = client.post("/api/v1/ab-tests", json={
+            "name": "Integration Test Experiment",
+            "description": "Created by integration test",
+            "primary_metric": "ctr",
+            "guardrail_metrics": ["latency_p99"],
+            "min_sample_size": 500,
+            "variants": [
+                {"id": "ctrl", "name": "Control", "type": "control", "traffic_fraction": 0.5},
+                {"id": "trt", "name": "Treatment", "type": "treatment", "traffic_fraction": 0.5},
+            ],
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert "experiment_id" in data
@@ -350,21 +310,20 @@ class TestModelRegistryEndpoints:
         assert resp.status_code == 404
 
     def test_compare_models(self):
-        resp = client.get("/api/v1/model-registry/compare/model-lambdamart-v1.3.0/model-ranknet-v0.9.1")
+        resp = client.get(
+            "/api/v1/model-registry/compare/model-lambdamart-v1.3.0/model-ranknet-v0.9.1"
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "overall_winner" in data
         assert "metrics_comparison" in data
 
     def test_trigger_retraining(self):
-        resp = client.post(
-            "/api/v1/model-registry/retrain",
-            json={
-                "model_name": "LambdaMART-LTR",
-                "trigger_type": "integration_test",
-                "reason": "Testing retraining trigger from integration tests",
-            },
-        )
+        resp = client.post("/api/v1/model-registry/retrain", json={
+            "model_name": "LambdaMART-LTR",
+            "trigger_type": "integration_test",
+            "reason": "Testing retraining trigger from integration tests",
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert "trigger_id" in data
@@ -394,28 +353,22 @@ class TestDataPipelineEndpoints:
     """Test data pipeline trigger endpoints."""
 
     def test_pipeline_dry_run(self):
-        resp = client.post(
-            "/api/v1/pipeline/run",
-            json={
-                "pipeline_name": "feature_computation",
-                "batch_size": 50,
-                "dry_run": True,
-            },
-        )
+        resp = client.post("/api/v1/pipeline/run", json={
+            "pipeline_name": "feature_computation",
+            "batch_size": 50,
+            "dry_run": True,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert data["dry_run"] is True
         assert "estimated_rows" in data
 
     def test_pipeline_actual_run(self):
-        resp = client.post(
-            "/api/v1/pipeline/run",
-            json={
-                "pipeline_name": "feature_computation",
-                "batch_size": 10,
-                "dry_run": False,
-            },
-        )
+        resp = client.post("/api/v1/pipeline/run", json={
+            "pipeline_name": "feature_computation",
+            "batch_size": 10,
+            "dry_run": False,
+        })
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "completed"

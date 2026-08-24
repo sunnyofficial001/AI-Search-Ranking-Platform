@@ -8,7 +8,7 @@ import { Search, Sparkles, TrendingUp, SlidersHorizontal, ArrowRight, CornerDown
 import { SearchResult } from '../types';
 
 export default function SearchDashboard() {
-  const [query, setQuery] = useState('smart speaker');
+  const [query, setQuery] = useState('');
   const [expandedQuery, setExpandedQuery] = useState('');
   const [useGemini, setUseGemini] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,7 +76,7 @@ export default function SearchDashboard() {
           Elasticsearch BM25 Candidate Generation & LTR Ranking
         </h2>
         <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-          Input clean search phrases. Toggle AI semantic expansion to see how embedding vectors and synoymystic attributes enhance BM25 scoring.
+          Input real search phrases. Toggle AI semantic expansion to see how the backend query rewrite and ranking pipeline affect BM25 scoring.
         </p>
 
         <div className="flex flex-col md:flex-row gap-3">
@@ -95,7 +95,7 @@ export default function SearchDashboard() {
           </div>
           <button
             onClick={handleSearch}
-            disabled={loading}
+            disabled={loading || !query.trim()}
             className="bg-cyan-500 hover:bg-cyan-455 text-slate-950 font-bold text-sm px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             id="search-submit-btn"
           >
@@ -199,54 +199,65 @@ export default function SearchDashboard() {
           {results.length === 0 ? (
             <div className="bg-[#121826] border border-white/5 rounded-xl p-12 text-center text-slate-500">
               <p className="text-sm mb-2">No query is active.</p>
-              <p className="text-xs text-slate-600">Please click the search button above or select a sample query to retrieve simulated index files.</p>
+              <p className="text-xs text-slate-600">Please click the search button above or select a sample query to retrieve ranked search results.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {results.map((item, index) => {
-                const rankDelta = item.originalRank - item.finalRank;
+                const product = item.product ?? {
+                  id: (item as any).productId ?? `result-${index}`,
+                  title: item.title ?? '',
+                  description: (item as any).description ?? '',
+                  category: item.category ?? 'Unknown',
+                };
+                const features = item.features ?? ({} as any);
+                const rankingScores = item.rankingScores ?? ((item as any).scores ?? {});
+                const finalRank = item.finalRank ?? (item as any).final_rank ?? 0;
+                const originalRank = item.originalRank ?? (item as any).original_rank ?? 0;
+                const relevanceLabel = item.relevanceLabel ?? (item as any).relevance_label ?? 0;
+                const rankDelta = originalRank - finalRank;
                 return (
                   <div
-                    key={item.product.id}
+                    key={product.id}
                     className="bg-[#121826] border border-white/5 rounded-xl p-5 hover:border-white/10 transition-all flex flex-col md:flex-row justify-between gap-4"
-                    id={`search-result-${item.product.id}`}
+                    id={`search-result-${product.id}`}
                   >
                     <div className="flex-1 space-y-2">
                       <div className="flex items-start gap-2 flex-wrap">
                         <span className="bg-[#0A0D14] text-cyan-400 text-[10px] font-mono font-medium px-2 py-0.5 rounded border border-white/5">
-                          {item.product.category}
+                          {product.category}
                         </span>
                         <span className="bg-[#0A0D14] text-emerald-400 text-[10px] font-mono font-medium px-2 py-0.5 rounded border border-white/5">
-                          ID: {item.product.id}
+                          ID: {product.id}
                         </span>
                         <span className="bg-[#0A0D14] text-amber-450 text-[10px] font-mono font-medium px-2 py-0.5 rounded border border-white/5">
-                          Label Score: {item.relevanceLabel}/4
+                          Label Score: {relevanceLabel}/4
                         </span>
                       </div>
 
                       <h4 className="text-base font-semibold text-slate-100 leading-tight">
-                        {item.product.title}
+                        {product.title}
                       </h4>
                       <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">
-                        {item.product.description}
+                        {product.description}
                       </p>
 
                       {/* Score metrics blocks */}
                       <div className="pt-2 flex flex-wrap gap-4 text-[10px] font-mono text-slate-400">
                         <div className="bg-[#0A0D14] px-2.5 py-1 rounded border border-white/5">
-                          BM25: <span className="text-slate-200">{item.features.bm25}</span>
+                          BM25: <span className="text-slate-200">{features.bm25}</span>
                         </div>
                         <div className="bg-[#0A0D14] px-2.5 py-1 rounded border border-white/5">
-                          Cosine Semantic: <span className="text-slate-200">{item.features.cosine}</span>
+                          Cosine Semantic: <span className="text-slate-200">{features.cosine}</span>
                         </div>
                         <div className="bg-[#0A0D14] px-2.5 py-1 rounded border border-white/5">
-                          CTR: <span className="text-slate-200">{item.features.ctr}%</span>
+                          CTR: <span className="text-slate-200">{features.ctr}%</span>
                         </div>
                         <div className="bg-[#0A0D14] px-2.5 py-1 rounded border border-white/5">
-                          Freshness: <span className="text-slate-200">{item.features.freshness}</span>
+                          Freshness: <span className="text-slate-200">{features.freshness}</span>
                         </div>
                         <div className="bg-[#0A0D14] px-2.5 py-1 rounded border border-white/5">
-                          Engagement: <span className="text-slate-200">{item.features.engagement}⭐</span>
+                          Engagement: <span className="text-slate-200">{features.engagement}⭐</span>
                         </div>
                       </div>
                     </div>
@@ -256,11 +267,11 @@ export default function SearchDashboard() {
                       <div className="flex md:flex-col gap-2 items-center md:items-end">
                         <div className="text-right">
                           <p className="text-[10px] text-slate-500 uppercase font-mono">LTR Revised Rank</p>
-                          <p className="text-2xl font-black text-cyan-400 font-mono">#{item.finalRank}</p>
+                          <p className="text-2xl font-black text-cyan-400 font-mono">#{finalRank}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] text-slate-500 uppercase font-mono">BM25 Rank</p>
-                          <p className="text-sm font-semibold text-slate-400 font-mono">#{item.originalRank}</p>
+                          <p className="text-sm font-semibold text-slate-400 font-mono">#{originalRank}</p>
                         </div>
                       </div>
 

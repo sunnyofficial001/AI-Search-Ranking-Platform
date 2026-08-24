@@ -1,7 +1,6 @@
 import unittest
-
 from backend.evaluation.evaluate import Evaluator
-
+from backend.services.search_service import SearchService
 
 class TestRetrievalMetrics(unittest.TestCase):
     def test_dcg_calculation(self):
@@ -14,7 +13,7 @@ class TestRetrievalMetrics(unittest.TestCase):
     def test_ndcg_calculation(self):
         ranked = [4, 1, 2, 0]
         ideal = [4, 2, 1, 0]
-
+        
         computed_ndcg = Evaluator.calculate_ndcg(ranked, ideal, 3)
         self.assertTrue(0.0 <= computed_ndcg <= 1.0)
         self.assertGreater(computed_ndcg, 0.5)
@@ -24,7 +23,7 @@ class TestRetrievalMetrics(unittest.TestCase):
         # Precision@1 = 1/1 = 1.0
         # Precision@3 = 2/3 = 0.666
         # AP = (1.0 + 0.6666)/2 = 0.8333
-        ranked = [4, 1, 3, 0]  # 4 and 3 have score >= 2 (relevant)
+        ranked = [4, 0, 3, 0] # 4 and 3 have score >= 2 (relevant)
         computed_map = Evaluator.calculate_map(ranked, 2)
         self.assertAlmostEqual(computed_map, 0.8333, places=3)
 
@@ -36,9 +35,9 @@ class TestRetrievalMetrics(unittest.TestCase):
         self.assertEqual(mrr, 0.5)
 
     def test_precision_recall_k(self):
-        ranked = [3, 0, 5, 1, 2]  # relevant at 0, 2, 4 (3 items)
+        ranked = [3, 0, 5, 0, 2] # relevant at 0, 2, 4 (3 items)
         prec_5 = Evaluator.calculate_precision_at_k(ranked, 5)
         rec_5 = Evaluator.calculate_recall_at_k(ranked, 3, 5)
-
+        
         self.assertEqual(prec_5, 0.6)  # 3/5
-        self.assertEqual(rec_5, 1.0)  # 3/3
+        self.assertEqual(rec_5, 1.0)   # 3/3

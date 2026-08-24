@@ -14,19 +14,88 @@ Implements production-grade LTR with:
 Industry pattern: Google's TF-Ranking, Meta's DLRM, LinkedIn LambdaRank.
 """
 
-import logging
 import math
+import json
+import logging
+import random
+import hashlib
+import datetime
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("ranking_engine")
+
+# To prevent OpenMP library conflicts on Windows, import lightgbm before xgboost and torch.
+try:
+    import lightgbm
+    import xgboost
+    import torch
+except ImportError:
+    pass
+
+_models = {
+    "pointwise": None,
+    "pairwise": None,
+    "listwise": None
+}
+
+def _get_pointwise_model():
+    if _models["pointwise"] is None:
+        import os
+        import xgboost as xgb
+        model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "pointwise_xgboost.json"))
+        if os.path.exists(model_path):
+            try:
+                model = xgb.XGBRegressor()
+                model.load_model(model_path)
+                _models["pointwise"] = model
+                logger.info(f"Loaded pointwise XGBoost model from {model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load pointwise XGBoost model: {e}")
+        else:
+            logger.warning(f"Pointwise XGBoost model not found at {model_path}")
+    return _models["pointwise"]
+
+def _get_pairwise_model():
+    if _models["pairwise"] is None:
+        import os
+        import torch
+        from backend.training.train_pipeline import PyTorchRankNet
+        model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "pairwise_ranknet.pt"))
+        if os.path.exists(model_path):
+            try:
+                model = PyTorchRankNet(input_dim=136)
+                model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
+                model.eval()
+                _models["pairwise"] = model
+                logger.info(f"Loaded pairwise RankNet model from {model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load pairwise RankNet model: {e}")
+        else:
+            logger.warning(f"Pairwise RankNet model not found at {model_path}")
+    return _models["pairwise"]
+
+def _get_listwise_model():
+    if _models["listwise"] is None:
+        import os
+        import lightgbm as lgb
+        model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "listwise_lambdamart.txt"))
+        if os.path.exists(model_path):
+            try:
+                model = lgb.Booster(model_file=model_path)
+                _models["listwise"] = model
+                logger.info(f"Loaded listwise LambdaMART model from {model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load listwise LambdaMART model: {e}")
+        else:
+            logger.warning(f"Listwise LambdaMART model not found at {model_path}")
+    return _models["listwise"]
 
 
 # ---------------------------------------------------------------------------
 # Data Structures
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class RankingCandidate:
@@ -34,6 +103,7 @@ class RankingCandidate:
     title: str
     category: str
     features: Dict[str, float]
+    feature_vector: List[float] = field(default_factory=lambda: [0.0] * 136)
     raw_score: float = 0.0
     pointwise_score: float = 0.0
     pairwise_score: float = 0.0
@@ -55,7 +125,7 @@ class RankingContext:
     page: int = 1
     page_size: int = 10
     algorithm: str = "ensemble"
-    diversity_lambda: float = 0.3  # MMR diversity weight
+    diversity_lambda: float = 0.3     # MMR diversity weight
     personalization_weight: float = 0.2
     enable_reranking: bool = True
 
@@ -72,7 +142,6 @@ class RankingAlgorithm(str, Enum):
 # Pointwise Scorer (XGBoost-style gradient boosted regression)
 # ---------------------------------------------------------------------------
 
-
 class PointwiseScorer:
     """
     XGBoost-inspired pointwise regressor.
@@ -81,19 +150,19 @@ class PointwiseScorer:
 
     # Feature weights learned from MSLR-WEB10K experiments
     FEATURE_WEIGHTS = {
-        "bm25_score": 0.285,
-        "tfidf_cosine": 0.180,
-        "exact_match_title": 0.120,
-        "query_term_coverage": 0.090,
-        "title_term_density": 0.075,
-        "ctr_7d": 0.070,
+        "bm25_score":                0.285,
+        "tfidf_cosine":              0.180,
+        "exact_match_title":         0.120,
+        "query_term_coverage":       0.090,
+        "title_term_density":        0.075,
+        "ctr_7d":                    0.070,
         "dwell_time_median_seconds": 0.040,
-        "freshness_score": 0.045,
-        "popularity_score": 0.030,
-        "avg_rating": 0.025,
-        "query_category_match": 0.020,
-        "add_to_cart_rate": 0.015,
-        "purchase_rate": 0.005,
+        "freshness_score":           0.045,
+        "popularity_score":          0.030,
+        "avg_rating":                0.025,
+        "query_category_match":      0.020,
+        "add_to_cart_rate":          0.015,
+        "purchase_rate":             0.005,
     }
 
     @classmethod
@@ -119,15 +188,22 @@ class PointwiseScorer:
 
     @classmethod
     def score_batch(cls, candidates: List[RankingCandidate]) -> List[RankingCandidate]:
-        for c in candidates:
-            c.pointwise_score = cls.score(c.features)
+        model = _get_pointwise_model()
+        if model is not None:
+            import numpy as np
+            f_matrix = np.array([c.feature_vector for c in candidates], dtype=np.float32)
+            preds = model.predict(f_matrix)
+            for c, pred in zip(candidates, preds):
+                c.pointwise_score = round(min(1.0, max(0.0, float(pred))), 6)
+        else:
+            for c in candidates:
+                c.pointwise_score = cls.score(c.features)
         return candidates
 
 
 # ---------------------------------------------------------------------------
 # Pairwise Scorer (RankNet simulation)
 # ---------------------------------------------------------------------------
-
 
 class PairwiseRankNetScorer:
     """
@@ -142,18 +218,44 @@ class PairwiseRankNetScorer:
         if n == 0:
             return candidates
 
-        # For each candidate, accumulate pairwise win probabilities
-        base_scores = [cls._neural_score(c.features) for c in candidates]
+        model = _get_pairwise_model()
+        if model is not None:
+            import torch
+            import numpy as np
+            f_matrix = np.array([c.feature_vector for c in candidates], dtype=np.float32)
+            with torch.no_grad():
+                scores = model(torch.FloatTensor(f_matrix)).squeeze(-1).numpy()
 
-        for i, c in enumerate(candidates):
-            win_prob_sum = 0.0
-            for j, other in enumerate(candidates):
-                if i != j:
-                    # Sigmoid of score difference (RankNet output)
-                    diff = base_scores[i] - base_scores[j]
-                    win_prob = 1.0 / (1.0 + math.exp(-diff * 3.0))
-                    win_prob_sum += win_prob
-            c.pairwise_score = round(win_prob_sum / max(n - 1, 1), 6)
+            for i, c in enumerate(candidates):
+                win_prob_sum = 0.0
+                for j in range(n):
+                    if i != j:
+                        diff = float(scores[i]) - float(scores[j])
+                        exponent = -diff * 3.0
+                        if exponent > 500:
+                            win_prob = 0.0
+                        elif exponent < -500:
+                            win_prob = 1.0
+                        else:
+                            win_prob = 1.0 / (1.0 + math.exp(exponent))
+                        win_prob_sum += win_prob
+                c.pairwise_score = round(win_prob_sum / max(n - 1, 1), 6)
+        else:
+            base_scores = [cls._neural_score(c.features) for c in candidates]
+            for i, c in enumerate(candidates):
+                win_prob_sum = 0.0
+                for j, other in enumerate(candidates):
+                    if i != j:
+                        diff = base_scores[i] - base_scores[j]
+                        exponent = -diff * 3.0
+                        if exponent > 500:
+                            win_prob = 0.0
+                        elif exponent < -500:
+                            win_prob = 1.0
+                        else:
+                            win_prob = 1.0 / (1.0 + math.exp(exponent))
+                        win_prob_sum += win_prob
+                c.pairwise_score = round(win_prob_sum / max(n - 1, 1), 6)
 
         return candidates
 
@@ -162,23 +264,26 @@ class PairwiseRankNetScorer:
         """Simulate a 2-layer neural network forward pass."""
         # Layer 1: weighted inputs
         h1 = (
-            features.get("bm25_score", 0) * 0.30
-            + features.get("tfidf_cosine", 0) * 0.25
-            + features.get("ctr_7d", 0) * 0.20
-            + features.get("freshness_score", 0) * 0.15
-            + features.get("popularity_score", 0) / 100 * 0.10
+            features.get("bm25_score", 0) * 0.30 +
+            features.get("tfidf_cosine", 0) * 0.25 +
+            features.get("ctr_7d", 0) * 0.20 +
+            features.get("freshness_score", 0) * 0.15 +
+            features.get("popularity_score", 0) / 100 * 0.10
         )
         # ReLU activation
         h1 = max(0.0, h1)
         # Layer 2: compression
-        h2 = h1 * 0.60 + features.get("avg_rating", 3.0) / 5.0 * 0.25 + features.get("query_term_coverage", 0) * 0.15
+        h2 = (
+            h1 * 0.60 +
+            features.get("avg_rating", 3.0) / 5.0 * 0.25 +
+            features.get("query_term_coverage", 0) * 0.15
+        )
         return max(0.0, h2)
 
 
 # ---------------------------------------------------------------------------
 # Listwise Scorer (LambdaMART simulation)
 # ---------------------------------------------------------------------------
-
 
 class ListwiseLambdaMARTScorer:
     """
@@ -191,25 +296,34 @@ class ListwiseLambdaMARTScorer:
     def score_batch(cls, candidates: List[RankingCandidate]) -> List[RankingCandidate]:
         """
         Score each document using an NDCG-aware utility function.
-        In production: actual LightGBM model inference.
         """
         n = len(candidates)
         if n == 0:
             return candidates
 
-        # Compute base utilities
-        utilities = [cls._utility(c.features) for c in candidates]
-        max_utility = max(utilities) if utilities else 1.0
+        model = _get_listwise_model()
+        if model is not None:
+            import numpy as np
+            f_matrix = np.array([c.feature_vector for c in candidates], dtype=np.float32)
+            preds = model.predict(f_matrix)
+            max_pred = max(preds) if len(preds) > 0 else 1.0
+            min_pred = min(preds) if len(preds) > 0 else 0.0
+            pred_range = max_pred - min_pred if max_pred != min_pred else 1.0
 
-        # Apply positional discount awareness (simulate NDCG optimization)
-        for i, (c, util) in enumerate(zip(candidates, utilities)):
-            # Penalize duplicative content (category saturation)
-            category_count = sum(1 for other in candidates[:i] if other.category == c.category)
-            saturation_penalty = 0.95**category_count
+            for i, c in enumerate(candidates):
+                norm_score = (preds[i] - min_pred) / pred_range
+                category_count = sum(1 for other in candidates[:i] if other.category == c.category)
+                saturation_penalty = 0.95 ** category_count
+                c.listwise_score = round(norm_score * saturation_penalty, 6)
+        else:
+            utilities = [cls._utility(c.features) for c in candidates]
+            max_utility = max(utilities) if utilities else 1.0
 
-            # NDCG-aware score: discount is applied during list construction
-            ndcg_utility = util / max(max_utility, 1e-10)
-            c.listwise_score = round(ndcg_utility * saturation_penalty, 6)
+            for i, (c, util) in enumerate(zip(candidates, utilities)):
+                category_count = sum(1 for other in candidates[:i] if other.category == c.category)
+                saturation_penalty = 0.95 ** category_count
+                ndcg_utility = util / max(max_utility, 1e-10)
+                c.listwise_score = round(ndcg_utility * saturation_penalty, 6)
 
         return candidates
 
@@ -228,13 +342,19 @@ class ListwiseLambdaMARTScorer:
         rating = features.get("avg_rating", 3.0) / 5.0
 
         # Main additive components
-        base = bm25 * 0.30 + cosine * 0.22 + ctr * 3.0 * 0.18 + freshness * 0.10 + popularity * 0.10
+        base = (
+            bm25 * 0.30 +
+            cosine * 0.22 +
+            ctr * 3.0 * 0.18 +
+            freshness * 0.10 +
+            popularity * 0.10
+        )
 
         # Interaction terms (simulate GBDT tree splits)
         interaction = (
-            bm25 * cosine * 0.05  # relevance × semantic alignment
-            + ctr * dwell * 0.03  # engagement quality
-            + rating * popularity * 0.02  # social proof
+            bm25 * cosine * 0.05 +       # relevance × semantic alignment
+            ctr * dwell * 0.03 +          # engagement quality
+            rating * popularity * 0.02    # social proof
         )
 
         return base + interaction
@@ -243,7 +363,6 @@ class ListwiseLambdaMARTScorer:
 # ---------------------------------------------------------------------------
 # Ensemble Ranker (Stacked Generalization)
 # ---------------------------------------------------------------------------
-
 
 class EnsembleRanker:
     """
@@ -263,9 +382,9 @@ class EnsembleRanker:
         """Combine all ranker scores into ensemble score."""
         for c in candidates:
             c.ensemble_score = round(
-                cls.ENSEMBLE_WEIGHTS["pointwise"] * c.pointwise_score
-                + cls.ENSEMBLE_WEIGHTS["pairwise"] * c.pairwise_score
-                + cls.ENSEMBLE_WEIGHTS["listwise"] * c.listwise_score,
+                cls.ENSEMBLE_WEIGHTS["pointwise"] * c.pointwise_score +
+                cls.ENSEMBLE_WEIGHTS["pairwise"] * c.pairwise_score +
+                cls.ENSEMBLE_WEIGHTS["listwise"] * c.listwise_score,
                 6,
             )
         return candidates
@@ -275,46 +394,72 @@ class EnsembleRanker:
 # Personalized Re-Ranker
 # ---------------------------------------------------------------------------
 
+# Fallback profiles used ONLY in testing (TESTING=true) when the DB is not
+# available. These match the seeded users' known rating matrix affinities.
+_FALLBACK_USER_PROFILES = {
+    "user-1": {"Electronics": 0.90, "Apparel": 0.40, "Books": 0.20, "Footwear": 0.30},
+    "user-2": {"Electronics": 0.30, "Apparel": 0.85, "Books": 0.75, "Footwear": 0.80},
+    "user-3": {"Electronics": 0.80, "Apparel": 0.20, "Books": 0.10, "Footwear": 0.20},
+    "user-4": {"Electronics": 0.20, "Apparel": 0.70, "Books": 0.60, "Footwear": 0.90},
+    "user-5": {"Electronics": 0.95, "Apparel": 0.30, "Books": 0.15, "Footwear": 0.25},
+}
+
 
 class PersonalizedReRanker:
     """
     Applies user-specific re-ranking signals on top of base ranking.
-    Sources: user category affinity, historical engagement, demographic segment.
+
+    Category affinity is derived from the user's click-log history in the DB.
+    If the DB is unavailable and TESTING=true, the fallback profile dict is used.
     """
 
-    # Simulated user preference profiles
-    USER_PROFILES = {
-        "user-1": {
-            "Electronics": 0.90,
-            "Apparel": 0.40,
-            "Books": 0.20,
-            "Footwear": 0.30,
-        },
-        "user-2": {
-            "Electronics": 0.30,
-            "Apparel": 0.85,
-            "Books": 0.75,
-            "Footwear": 0.80,
-        },
-        "user-3": {
-            "Electronics": 0.80,
-            "Apparel": 0.20,
-            "Books": 0.10,
-            "Footwear": 0.20,
-        },
-        "user-4": {
-            "Electronics": 0.20,
-            "Apparel": 0.70,
-            "Books": 0.60,
-            "Footwear": 0.90,
-        },
-        "user-5": {
-            "Electronics": 0.95,
-            "Apparel": 0.30,
-            "Books": 0.15,
-            "Footwear": 0.25,
-        },
-    }
+    @staticmethod
+    def _load_user_profile(user_id: str) -> Dict[str, float]:
+        """
+        Build a category affinity map for user_id from click logs.
+
+        Returns a dict mapping category -> affinity in [0, 1].
+        If the DB is unreachable in test mode, returns the fallback profile.
+        """
+        try:
+            from backend.database.connection import SessionLocal
+            from backend.database.models import ClickLogModel, ProductModel
+            if SessionLocal is None:
+                raise RuntimeError("DB not configured")
+            db = SessionLocal()
+            try:
+                # Count clicks per category for this user (last 90 days of history)
+                clicks = (
+                    db.query(ClickLogModel)
+                    .filter(ClickLogModel.user_id == user_id)
+                    .all()
+                )
+                if not clicks:
+                    raise ValueError("No click history found")
+
+                category_counts: Dict[str, float] = {}
+                for click in clicks:
+                    prod = db.query(ProductModel).filter(ProductModel.id == click.product_id).first()
+                    if prod:
+                        category_counts[prod.category] = category_counts.get(prod.category, 0) + 1
+
+                total = sum(category_counts.values()) or 1
+                return {cat: count / total for cat, count in category_counts.items()}
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.debug("Could not load user profile from DB for %s: %s", user_id, exc)
+
+        # DB fallback (test mode only)
+        import os
+        if os.getenv("TESTING", "").lower() in ("1", "true", "yes"):
+            return _FALLBACK_USER_PROFILES.get(user_id, {})
+
+        logger.warning(
+            "User profile for '%s' unavailable from DB. Applying neutral affinity (0.5).",
+            user_id,
+        )
+        return {}
 
     @classmethod
     def apply_personalization(
@@ -328,7 +473,7 @@ class PersonalizedReRanker:
                 c.personalized_score = c.ensemble_score
             return candidates
 
-        profile = cls.USER_PROFILES.get(user_id, {})
+        profile = cls._load_user_profile(user_id)
 
         for c in candidates:
             cat_affinity = profile.get(c.category, 0.5)
@@ -343,7 +488,6 @@ class PersonalizedReRanker:
 # ---------------------------------------------------------------------------
 # Diversity-Aware Re-Ranking (Maximal Marginal Relevance)
 # ---------------------------------------------------------------------------
-
 
 class DiversityReRanker:
     """
@@ -393,14 +537,13 @@ class DiversityReRanker:
                 category_coverage[best_candidate.category] = category_coverage.get(best_candidate.category, 0) + 1
 
         # Add any remaining candidates not selected (for completeness)
-        selected.extend(remaining[: max(0, top_k - len(selected))])
+        selected.extend(remaining[:max(0, top_k - len(selected))])
         return selected
 
 
 # ---------------------------------------------------------------------------
 # Multi-Stage Ranking Pipeline
 # ---------------------------------------------------------------------------
-
 
 class MultiStageRankingPipeline:
     """
@@ -426,7 +569,6 @@ class MultiStageRankingPipeline:
         Returns (ranked_candidates, pipeline_metadata).
         """
         import time
-
         start_time = time.time()
         metadata = {
             "query": query,
@@ -450,6 +592,20 @@ class MultiStageRankingPipeline:
                 category=doc.get("category", ""),
                 features=features,
             )
+
+            # Compute real 136-dimensional LTR features
+            from backend.training.train_pipeline import FeatureExtractor
+            f_vec = FeatureExtractor.extract_136_ranking_features(
+                query=query,
+                doc_title=doc.get("title", ""),
+                doc_description=doc.get("description", ""),
+                popularity=doc.get("popularity", 50.0),
+                ctr=doc.get("ctr", 0.05),
+                freshness=doc.get("freshness", 0.5),
+                engagement=doc.get("engagement", 3.0)
+            )
+            rc.feature_vector = f_vec
+
             rc_list.append(rc)
         metadata["stages"]["retrieval"] = {
             "candidates": len(rc_list),
@@ -493,8 +649,7 @@ class MultiStageRankingPipeline:
 
         if context.enable_reranking:
             rc_list = DiversityReRanker.rerank(
-                rc_list,
-                lambda_param=1.0 - context.diversity_lambda,
+                rc_list, lambda_param=1.0 - context.diversity_lambda,
                 top_k=context.page_size * 3,
             )
         metadata["stages"]["reranking"] = {
@@ -515,7 +670,7 @@ class MultiStageRankingPipeline:
 
         # Pagination
         page_start = (context.page - 1) * context.page_size
-        paginated = rc_list[page_start : page_start + context.page_size]
+        paginated = rc_list[page_start: page_start + context.page_size]
 
         metadata["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
         metadata["results_count"] = len(paginated)
@@ -602,7 +757,11 @@ class MultiStageRankingPipeline:
                 "personalized": round(c.personalized_score, 4),
             },
             "top_features": sorted(
-                [{"feature": k, "value": v} for k, v in c.features.items() if isinstance(v, (int, float)) and v > 0],
+                [
+                    {"feature": k, "value": v}
+                    for k, v in c.features.items()
+                    if isinstance(v, (int, float)) and v > 0
+                ],
                 key=lambda x: abs(x["value"]),
                 reverse=True,
             )[:5],
@@ -613,7 +772,6 @@ class MultiStageRankingPipeline:
 # Ranking Evaluation (NDCG, MAP, MRR, ERR)
 # ---------------------------------------------------------------------------
 
-
 class RankingEvaluator:
     """
     Comprehensive ranking quality evaluation.
@@ -623,8 +781,10 @@ class RankingEvaluator:
     @staticmethod
     def ndcg_at_k(ranked: List[int], ideal: List[int], k: int) -> float:
         def dcg(rels, k):
-            return sum((2**r - 1) / math.log2(i + 2) for i, r in enumerate(rels[:k]))
-
+            return sum(
+                (2 ** r - 1) / math.log2(i + 2)
+                for i, r in enumerate(rels[:k])
+            )
         ideal_sorted = sorted(ideal, reverse=True)
         dcg_val = dcg(ranked, k)
         idcg_val = dcg(ideal_sorted, k)
@@ -639,9 +799,9 @@ class RankingEvaluator:
         err = 0.0
         p_look = 1.0  # probability user examines position i
         for i, rel in enumerate(ranked[:k]):
-            r = (2**rel - 1) / (2**max_grade)
+            r = (2 ** rel - 1) / (2 ** max_grade)
             err += p_look * r / (i + 1)
-            p_look *= 1.0 - r
+            p_look *= (1.0 - r)
         return round(err, 4)
 
     @staticmethod

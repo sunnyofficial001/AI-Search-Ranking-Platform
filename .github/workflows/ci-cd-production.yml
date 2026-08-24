@@ -47,8 +47,7 @@ jobs:
             --ignore-missing-imports \
             --no-strict-optional \
             --warn-return-any \
-            --warn-unused-ignores \
-            --explicit-package-bases
+            --warn-unused-ignores
 
       - name: Bandit security scan
         run: |

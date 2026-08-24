@@ -15,14 +15,14 @@ Industry patterns from: Netflix (TF-Recommender), Spotify (Discover Weekly),
 Amazon (item2item), YouTube (DNN ranking), LinkedIn (PYMK).
 """
 
-import datetime
-import hashlib
-import logging
 import math
 import random
+import hashlib
+import datetime
+import logging
+from typing import Any, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("rec_engine")
 
@@ -30,7 +30,6 @@ logger = logging.getLogger("rec_engine")
 # ---------------------------------------------------------------------------
 # Data Structures
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class RecommendationItem:
@@ -72,130 +71,73 @@ class RecommendationType(str, Enum):
 
 ITEM_CATALOG = [
     {
-        "id": "prod-1",
-        "title": "Amazon Echo Dot (5th Gen) - Smart Speaker Alexa",
-        "category": "Electronics",
-        "subcategory": "Smart Home",
+        "id": "prod-1", "title": "Amazon Echo Dot (5th Gen) - Smart Speaker Alexa",
+        "category": "Electronics", "subcategory": "Smart Home",
         "tags": ["smart home", "alexa", "speaker", "voice assistant", "wifi"],
-        "popularity": 92.0,
-        "ctr": 0.12,
-        "freshness": 0.85,
-        "engagement": 4.6,
+        "popularity": 92.0, "ctr": 0.12, "freshness": 0.85, "engagement": 4.6,
         "price_tier": "budget",
     },
     {
-        "id": "prod-2",
-        "title": "Fjallraven Kanken Classic Minimalist Backpack",
-        "category": "Apparel",
-        "subcategory": "Bags",
+        "id": "prod-2", "title": "Fjallraven Kanken Classic Minimalist Backpack",
+        "category": "Apparel", "subcategory": "Bags",
         "tags": ["backpack", "minimalist", "outdoor", "travel", "school"],
-        "popularity": 88.0,
-        "ctr": 0.08,
-        "freshness": 0.60,
-        "engagement": 4.4,
+        "popularity": 88.0, "ctr": 0.08, "freshness": 0.60, "engagement": 4.4,
         "price_tier": "mid",
     },
     {
-        "id": "prod-3",
-        "title": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
-        "category": "Electronics",
-        "subcategory": "Audio",
-        "tags": [
-            "headphones",
-            "noise cancelling",
-            "wireless",
-            "sony",
-            "bluetooth",
-            "audiophile",
-        ],
-        "popularity": 95.0,
-        "ctr": 0.15,
-        "freshness": 0.90,
-        "engagement": 4.8,
+        "id": "prod-3", "title": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
+        "category": "Electronics", "subcategory": "Audio",
+        "tags": ["headphones", "noise cancelling", "wireless", "sony", "bluetooth", "audiophile"],
+        "popularity": 95.0, "ctr": 0.15, "freshness": 0.90, "engagement": 4.8,
         "price_tier": "premium",
     },
     {
-        "id": "prod-4",
-        "title": "Levi's Men's 511 Slim Fit Jeans Stretch Denim",
-        "category": "Apparel",
-        "subcategory": "Jeans",
+        "id": "prod-4", "title": "Levi's Men's 511 Slim Fit Jeans Stretch Denim",
+        "category": "Apparel", "subcategory": "Jeans",
         "tags": ["jeans", "denim", "slim fit", "levis", "fashion", "casual"],
-        "popularity": 79.0,
-        "ctr": 0.05,
-        "freshness": 0.40,
-        "engagement": 4.1,
+        "popularity": 79.0, "ctr": 0.05, "freshness": 0.40, "engagement": 4.1,
         "price_tier": "mid",
     },
     {
-        "id": "prod-5",
-        "title": "Anker USB-C Charger Nano 30W Super Fast Charging",
-        "category": "Electronics",
-        "subcategory": "Accessories",
+        "id": "prod-5", "title": "Anker USB-C Charger Nano 30W Super Fast Charging",
+        "category": "Electronics", "subcategory": "Accessories",
         "tags": ["charger", "usb-c", "fast charging", "portable", "anker", "gan"],
-        "popularity": 91.0,
-        "ctr": 0.18,
-        "freshness": 0.95,
-        "engagement": 4.7,
+        "popularity": 91.0, "ctr": 0.18, "freshness": 0.95, "engagement": 4.7,
         "price_tier": "budget",
     },
     {
-        "id": "prod-6",
-        "title": "Apple AirPods Pro (2nd Gen) with USB-C",
-        "category": "Electronics",
-        "subcategory": "Audio",
+        "id": "prod-6", "title": "Apple AirPods Pro (2nd Gen) with USB-C",
+        "category": "Electronics", "subcategory": "Audio",
         "tags": ["airpods", "apple", "earbuds", "noise cancelling", "wireless", "ios"],
-        "popularity": 98.0,
-        "ctr": 0.22,
-        "freshness": 0.92,
-        "engagement": 4.9,
+        "popularity": 98.0, "ctr": 0.22, "freshness": 0.92, "engagement": 4.9,
         "price_tier": "premium",
     },
     {
-        "id": "prod-7",
-        "title": "Nike Men's Air Zoom Pegasus Running Shoes",
-        "category": "Footwear",
-        "subcategory": "Running",
+        "id": "prod-7", "title": "Nike Men's Air Zoom Pegasus Running Shoes",
+        "category": "Footwear", "subcategory": "Running",
         "tags": ["running", "nike", "shoes", "athletic", "sport", "zoom"],
-        "popularity": 84.0,
-        "ctr": 0.07,
-        "freshness": 0.70,
-        "engagement": 4.3,
+        "popularity": 84.0, "ctr": 0.07, "freshness": 0.70, "engagement": 4.3,
         "price_tier": "mid",
     },
     {
-        "id": "prod-8",
-        "title": "The Alchemist - Original Hardcover Fiction",
-        "category": "Books",
-        "subcategory": "Fiction",
+        "id": "prod-8", "title": "The Alchemist - Original Hardcover Fiction",
+        "category": "Books", "subcategory": "Fiction",
         "tags": ["book", "fiction", "bestseller", "inspiration", "philosophy"],
-        "popularity": 75.0,
-        "ctr": 0.04,
-        "freshness": 0.20,
-        "engagement": 4.5,
+        "popularity": 75.0, "ctr": 0.04, "freshness": 0.20, "engagement": 4.5,
         "price_tier": "budget",
     },
     {
-        "id": "prod-9",
-        "title": "Asus ROG Zephyrus G14 Gaming Laptop RTX 4060",
-        "category": "Electronics",
-        "subcategory": "Computers",
+        "id": "prod-9", "title": "Asus ROG Zephyrus G14 Gaming Laptop RTX 4060",
+        "category": "Electronics", "subcategory": "Computers",
         "tags": ["laptop", "gaming", "asus", "rog", "rtx", "amd", "high performance"],
-        "popularity": 86.0,
-        "ctr": 0.10,
-        "freshness": 0.88,
-        "engagement": 4.5,
+        "popularity": 86.0, "ctr": 0.10, "freshness": 0.88, "engagement": 4.5,
         "price_tier": "premium",
     },
     {
-        "id": "prod-10",
-        "title": "Stan Smith Ortholite Recycled Clean Sneakers",
-        "category": "Footwear",
-        "subcategory": "Casual",
+        "id": "prod-10", "title": "Stan Smith Ortholite Recycled Clean Sneakers",
+        "category": "Footwear", "subcategory": "Casual",
         "tags": ["sneakers", "adidas", "stan smith", "casual", "sustainable", "clean"],
-        "popularity": 81.0,
-        "ctr": 0.06,
-        "freshness": 0.50,
-        "engagement": 4.2,
+        "popularity": 81.0, "ctr": 0.06, "freshness": 0.50, "engagement": 4.2,
         "price_tier": "mid",
     },
 ]
@@ -206,7 +148,6 @@ ITEM_BY_ID = {item["id"]: item for item in ITEM_CATALOG}
 # ---------------------------------------------------------------------------
 # Embedding Simulator (Item2Vec-style)
 # ---------------------------------------------------------------------------
-
 
 class EmbeddingEngine:
     """
@@ -239,16 +180,11 @@ class EmbeddingEngine:
 
         # Inject tag signals
         tag_signals = {
-            "noise cancelling": (0, 0.8),
-            "wireless": (1, 0.6),
-            "premium": (2, 0.7),
-            "budget": (3, -0.5),
-            "fashion": (4, 0.6),
-            "casual": (5, 0.4),
-            "running": (8, 0.8),
-            "athletic": (9, 0.5),
-            "gaming": (0, 0.9),
-            "high performance": (1, 0.8),
+            "noise cancelling": (0, 0.8), "wireless": (1, 0.6),
+            "premium": (2, 0.7), "budget": (3, -0.5),
+            "fashion": (4, 0.6), "casual": (5, 0.4),
+            "running": (8, 0.8), "athletic": (9, 0.5),
+            "gaming": (0, 0.9), "high performance": (1, 0.8),
         }
         for tag in tags:
             if tag in tag_signals:
@@ -295,7 +231,6 @@ class EmbeddingEngine:
 # Session-Based Recommender (GRU4Rec-inspired)
 # ---------------------------------------------------------------------------
 
-
 class SessionBasedRecommender:
     """
     Session-based recommendations using sequential patterns.
@@ -305,52 +240,16 @@ class SessionBasedRecommender:
 
     # Co-click transition probabilities (learned from session logs)
     TRANSITION_MATRIX = {
-        "prod-1": {
-            "prod-5": 0.45,
-            "prod-3": 0.30,
-            "prod-6": 0.25,
-        },  # Echo → charger, headphones
-        "prod-3": {
-            "prod-6": 0.50,
-            "prod-5": 0.25,
-            "prod-9": 0.25,
-        },  # Headphones → AirPods, charger
-        "prod-6": {
-            "prod-3": 0.40,
-            "prod-5": 0.35,
-            "prod-1": 0.25,
-        },  # AirPods → headphones, charger
-        "prod-5": {
-            "prod-3": 0.35,
-            "prod-6": 0.30,
-            "prod-9": 0.35,
-        },  # Charger → audio, laptop
-        "prod-2": {
-            "prod-4": 0.40,
-            "prod-7": 0.30,
-            "prod-10": 0.30,
-        },  # Backpack → jeans, shoes
-        "prod-4": {
-            "prod-2": 0.35,
-            "prod-7": 0.35,
-            "prod-10": 0.30,
-        },  # Jeans → backpack, shoes
-        "prod-7": {
-            "prod-10": 0.50,
-            "prod-4": 0.30,
-            "prod-2": 0.20,
-        },  # Nike → Adidas, jeans
+        "prod-1": {"prod-5": 0.45, "prod-3": 0.30, "prod-6": 0.25},   # Echo → charger, headphones
+        "prod-3": {"prod-6": 0.50, "prod-5": 0.25, "prod-9": 0.25},   # Headphones → AirPods, charger
+        "prod-6": {"prod-3": 0.40, "prod-5": 0.35, "prod-1": 0.25},   # AirPods → headphones, charger
+        "prod-5": {"prod-3": 0.35, "prod-6": 0.30, "prod-9": 0.35},   # Charger → audio, laptop
+        "prod-2": {"prod-4": 0.40, "prod-7": 0.30, "prod-10": 0.30},  # Backpack → jeans, shoes
+        "prod-4": {"prod-2": 0.35, "prod-7": 0.35, "prod-10": 0.30},  # Jeans → backpack, shoes
+        "prod-7": {"prod-10": 0.50, "prod-4": 0.30, "prod-2": 0.20},  # Nike → Adidas, jeans
         "prod-10": {"prod-7": 0.55, "prod-4": 0.25, "prod-2": 0.20},  # Adidas → Nike
-        "prod-9": {
-            "prod-5": 0.40,
-            "prod-3": 0.35,
-            "prod-6": 0.25,
-        },  # Laptop → charger, audio
-        "prod-8": {
-            "prod-4": 0.30,
-            "prod-2": 0.30,
-            "prod-7": 0.40,
-        },  # Book → lifestyle items
+        "prod-9": {"prod-5": 0.40, "prod-3": 0.35, "prod-6": 0.25},   # Laptop → charger, audio
+        "prod-8": {"prod-4": 0.30, "prod-2": 0.30, "prod-7": 0.40},   # Book → lifestyle items
     }
 
     @classmethod
@@ -368,14 +267,16 @@ class SessionBasedRecommender:
         all_interactions = session.clicked_items or session.viewed_items
 
         for pos, item_id in enumerate(reversed(all_interactions)):
-            recency_weight = 0.8**pos  # Exponential decay for older events
+            recency_weight = 0.8 ** pos  # Exponential decay for older events
             transitions = cls.TRANSITION_MATRIX.get(item_id, {})
             for target_id, prob in transitions.items():
                 scores[target_id] = scores.get(target_id, 0) + prob * recency_weight
 
             # Embedding-based fallback for items not in transition matrix
             if not transitions:
-                similar = EmbeddingEngine.most_similar(item_id, list(ITEM_BY_ID.keys()), top_k=3)
+                similar = EmbeddingEngine.most_similar(
+                    item_id, list(ITEM_BY_ID.keys()), top_k=3
+                )
                 for sim_id, sim_score in similar:
                     scores[sim_id] = scores.get(sim_id, 0) + sim_score * recency_weight * 0.5
 
@@ -389,16 +290,14 @@ class SessionBasedRecommender:
             item = ITEM_BY_ID.get(item_id)
             if not item:
                 continue
-            results.append(
-                RecommendationItem(
-                    item_id=item_id,
-                    title=item["title"],
-                    category=item["category"],
-                    score=round(score, 4),
-                    recommendation_type=RecommendationType.SESSION_BASED.value,
-                    explanation=f"Users who viewed {all_interactions[-1] if all_interactions else 'similar items'} also viewed this.",
-                )
-            )
+            results.append(RecommendationItem(
+                item_id=item_id,
+                title=item["title"],
+                category=item["category"],
+                score=round(score, 4),
+                recommendation_type=RecommendationType.SESSION_BASED.value,
+                explanation=f"Users who viewed {all_interactions[-1] if all_interactions else 'similar items'} also viewed this.",
+            ))
 
         return results[:top_k]
 
@@ -423,7 +322,6 @@ class SessionBasedRecommender:
 # Two-Tower Embedding Recommender
 # ---------------------------------------------------------------------------
 
-
 class TwoTowerRecommender:
     """
     Two-tower (dual encoder) model for user-item matching.
@@ -437,47 +335,22 @@ class TwoTowerRecommender:
 
     # Simulated user embeddings (in production: output of user encoder)
     USER_PROFILES = {
-        "user-1": {
-            "tech_affinity": 0.90,
-            "fashion_affinity": 0.20,
-            "price_sensitivity": 0.30,
-        },
-        "user-2": {
-            "tech_affinity": 0.25,
-            "fashion_affinity": 0.85,
-            "price_sensitivity": 0.60,
-        },
-        "user-3": {
-            "tech_affinity": 0.80,
-            "fashion_affinity": 0.15,
-            "price_sensitivity": 0.20,
-        },
-        "user-4": {
-            "tech_affinity": 0.15,
-            "fashion_affinity": 0.90,
-            "price_sensitivity": 0.70,
-        },
-        "user-5": {
-            "tech_affinity": 0.95,
-            "fashion_affinity": 0.10,
-            "price_sensitivity": 0.15,
-        },
+        "user-1": {"tech_affinity": 0.90, "fashion_affinity": 0.20, "price_sensitivity": 0.30},
+        "user-2": {"tech_affinity": 0.25, "fashion_affinity": 0.85, "price_sensitivity": 0.60},
+        "user-3": {"tech_affinity": 0.80, "fashion_affinity": 0.15, "price_sensitivity": 0.20},
+        "user-4": {"tech_affinity": 0.15, "fashion_affinity": 0.90, "price_sensitivity": 0.70},
+        "user-5": {"tech_affinity": 0.95, "fashion_affinity": 0.10, "price_sensitivity": 0.15},
     }
 
     PRICE_TIER_MAP = {"budget": 0.3, "mid": 0.6, "premium": 0.9}
-    CATEGORY_DIMENSION = {
-        "Electronics": "tech_affinity",
-        "Apparel": "fashion_affinity",
-        "Footwear": "fashion_affinity",
-        "Books": "fashion_affinity",
-    }
+    CATEGORY_DIMENSION = {"Electronics": "tech_affinity", "Apparel": "fashion_affinity",
+                           "Footwear": "fashion_affinity", "Books": "fashion_affinity"}
 
     @classmethod
     def get_user_embedding(cls, user_id: str) -> Dict[str, float]:
-        return cls.USER_PROFILES.get(
-            user_id,
-            {"tech_affinity": 0.5, "fashion_affinity": 0.5, "price_sensitivity": 0.5},
-        )
+        return cls.USER_PROFILES.get(user_id, {
+            "tech_affinity": 0.5, "fashion_affinity": 0.5, "price_sensitivity": 0.5
+        })
 
     @classmethod
     def score_item_for_user(cls, user_id: str, item: Dict[str, Any]) -> float:
@@ -510,39 +383,19 @@ class TwoTowerRecommender:
             score = cls.score_item_for_user(user_id, item)
             emb_sim = EmbeddingEngine.cosine_similarity(
                 EmbeddingEngine.item_embedding(item["id"]),
-                [
-                    cls.get_user_embedding(user_id).get(k, 0.5)
-                    for k in [
-                        "tech_affinity",
-                        "fashion_affinity",
-                        "price_sensitivity",
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                        0.5,
-                    ]
-                ],
+                [cls.get_user_embedding(user_id).get(k, 0.5) for k in
+                 ["tech_affinity", "fashion_affinity", "price_sensitivity", 0.5, 0.5,
+                  0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]]
             )
-            scored.append(
-                RecommendationItem(
-                    item_id=item["id"],
-                    title=item["title"],
-                    category=item["category"],
-                    score=score,
-                    recommendation_type=RecommendationType.TWO_TOWER.value,
-                    embedding_similarity=abs(emb_sim),
-                    explanation=f"Matched to your profile via two-tower model (user-item affinity={score:.2f})",
-                )
-            )
+            scored.append(RecommendationItem(
+                item_id=item["id"],
+                title=item["title"],
+                category=item["category"],
+                score=score,
+                recommendation_type=RecommendationType.TWO_TOWER.value,
+                embedding_similarity=abs(emb_sim),
+                explanation=f"Matched to your profile via two-tower model (user-item affinity={score:.2f})",
+            ))
 
         scored.sort(key=lambda x: x.score, reverse=True)
         return scored[:top_k]
@@ -551,7 +404,6 @@ class TwoTowerRecommender:
 # ---------------------------------------------------------------------------
 # Cold-Start Handler
 # ---------------------------------------------------------------------------
-
 
 class ColdStartHandler:
     """
@@ -580,16 +432,14 @@ class ColdStartHandler:
             cat_count = sum(1 for s in selected if s.category == item["category"])
             if cat_count >= 2:
                 continue
-            selected.append(
-                RecommendationItem(
-                    item_id=item["id"],
-                    title=item["title"],
-                    category=item["category"],
-                    score=round(item["popularity"] / 100.0 * 0.7 + item["ctr"] * 3 * 0.3, 4),
-                    recommendation_type=RecommendationType.COLD_START.value,
-                    explanation="Trending and highly rated — great for new users.",
-                )
-            )
+            selected.append(RecommendationItem(
+                item_id=item["id"],
+                title=item["title"],
+                category=item["category"],
+                score=round(item["popularity"] / 100.0 * 0.7 + item["ctr"] * 3 * 0.3, 4),
+                recommendation_type=RecommendationType.COLD_START.value,
+                explanation="Trending and highly rated — great for new users.",
+            ))
             category_seen.add(item["category"])
 
         return selected
@@ -618,7 +468,6 @@ class ColdStartHandler:
 # Diversity & Novelty Optimizer
 # ---------------------------------------------------------------------------
 
-
 class DiversityOptimizer:
     """
     Optimizes recommendation lists for diversity and novelty.
@@ -634,7 +483,7 @@ class DiversityOptimizer:
         total_dissimilarity = 0.0
         pair_count = 0
         for i, a in enumerate(items):
-            for b in items[i + 1 :]:
+            for b in items[i + 1:]:
                 emb_a = EmbeddingEngine.item_embedding(a.item_id)
                 emb_b = EmbeddingEngine.item_embedding(b.item_id)
                 similarity = EmbeddingEngine.cosine_similarity(emb_a, emb_b)
@@ -671,7 +520,11 @@ class DiversityOptimizer:
             cat_count = category_counts.get(item.category, 0)
             diversity_bonus = max(0.0, 0.1 - cat_count * 0.03)  # Diminishing returns per category
 
-            final_score = item.score * (1.0 - novelty_weight) + novelty * novelty_weight + diversity_bonus
+            final_score = (
+                item.score * (1.0 - novelty_weight) +
+                novelty * novelty_weight +
+                diversity_bonus
+            )
             item.novelty_score = novelty
             item.diversity_score = diversity_bonus
             item.score = round(min(1.0, final_score), 4)
@@ -685,7 +538,6 @@ class DiversityOptimizer:
 # ---------------------------------------------------------------------------
 # Unified Recommendation Service
 # ---------------------------------------------------------------------------
-
 
 class AdvancedRecommendService:
     """
@@ -723,7 +575,9 @@ class AdvancedRecommendService:
         elif rec_type == RecommendationType.ITEM2VEC:
             if not item_id:
                 item_id = ITEM_CATALOG[0]["id"]
-            similar = EmbeddingEngine.most_similar(item_id, list(ITEM_BY_ID.keys()), top_k=top_k)
+            similar = EmbeddingEngine.most_similar(
+                item_id, list(ITEM_BY_ID.keys()), top_k=top_k
+            )
             items = [
                 RecommendationItem(
                     item_id=sid,
@@ -750,16 +604,14 @@ class AdvancedRecommendService:
             items = []
             for iid, score in sorted(score_map.items(), key=lambda x: x[1], reverse=True)[:top_k]:
                 cat_item = ITEM_BY_ID.get(iid, {})
-                items.append(
-                    RecommendationItem(
-                        item_id=iid,
-                        title=cat_item.get("title", iid),
-                        category=cat_item.get("category", ""),
-                        score=round(score, 4),
-                        recommendation_type=RecommendationType.HYBRID.value,
-                        explanation="Hybrid score (40% session + 60% two-tower)",
-                    )
-                )
+                items.append(RecommendationItem(
+                    item_id=iid,
+                    title=cat_item.get("title", iid),
+                    category=cat_item.get("category", ""),
+                    score=round(score, 4),
+                    recommendation_type=RecommendationType.HYBRID.value,
+                    explanation=f"Hybrid score (40% session + 60% two-tower)",
+                ))
 
         # Apply diversity optimization
         if apply_diversity and items:

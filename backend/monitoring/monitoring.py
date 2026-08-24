@@ -12,17 +12,16 @@ Implements:
 Industry patterns from: Google SRE Book, Netflix Hystrix, Datadog APM.
 """
 
-import datetime
-import json
-import logging
-import threading
 import time
+import json
 import uuid
-from collections import defaultdict
+import logging
+import datetime
+import threading
+from typing import Any, Dict, List, Optional, Callable, Tuple
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
-
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -32,7 +31,6 @@ logger = logging.getLogger("monitoring")
 # ---------------------------------------------------------------------------
 # Metrics Registry (Prometheus-style)
 # ---------------------------------------------------------------------------
-
 
 class MetricType(str, Enum):
     COUNTER = "counter"
@@ -67,56 +65,20 @@ class MetricsRegistry:
     def _init_default_metrics(cls):
         defaults = [
             ("http_requests_total", MetricType.COUNTER, "Total HTTP requests"),
-            (
-                "http_request_duration_ms",
-                MetricType.HISTOGRAM,
-                "HTTP request duration in milliseconds",
-            ),
+            ("http_request_duration_ms", MetricType.HISTOGRAM, "HTTP request duration in milliseconds"),
             ("http_errors_total", MetricType.COUNTER, "Total HTTP error responses"),
-            (
-                "search_queries_total",
-                MetricType.COUNTER,
-                "Total search queries processed",
-            ),
+            ("search_queries_total", MetricType.COUNTER, "Total search queries processed"),
             ("search_latency_ms", MetricType.HISTOGRAM, "Search endpoint latency"),
-            (
-                "recommendation_requests_total",
-                MetricType.COUNTER,
-                "Total recommendation requests",
-            ),
-            (
-                "recommendation_latency_ms",
-                MetricType.HISTOGRAM,
-                "Recommendation endpoint latency",
-            ),
-            (
-                "feature_cache_hits_total",
-                MetricType.COUNTER,
-                "Feature store cache hits",
-            ),
-            (
-                "feature_cache_misses_total",
-                MetricType.COUNTER,
-                "Feature store cache misses",
-            ),
-            (
-                "model_inference_latency_ms",
-                MetricType.HISTOGRAM,
-                "ML model inference latency",
-            ),
+            ("recommendation_requests_total", MetricType.COUNTER, "Total recommendation requests"),
+            ("recommendation_latency_ms", MetricType.HISTOGRAM, "Recommendation endpoint latency"),
+            ("feature_cache_hits_total", MetricType.COUNTER, "Feature store cache hits"),
+            ("feature_cache_misses_total", MetricType.COUNTER, "Feature store cache misses"),
+            ("model_inference_latency_ms", MetricType.HISTOGRAM, "ML model inference latency"),
             ("ndcg_at_10_online", MetricType.GAUGE, "Online NDCG@10 estimate"),
             ("ctr_online", MetricType.GAUGE, "Online click-through rate"),
             ("drift_psi_score", MetricType.GAUGE, "Current PSI drift score"),
-            (
-                "active_ab_experiments",
-                MetricType.GAUGE,
-                "Number of running A/B experiments",
-            ),
-            (
-                "rate_limit_rejections_total",
-                MetricType.COUNTER,
-                "Rate limited requests rejected",
-            ),
+            ("active_ab_experiments", MetricType.GAUGE, "Number of running A/B experiments"),
+            ("rate_limit_rejections_total", MetricType.COUNTER, "Rate limited requests rejected"),
         ]
         for name, mtype, desc in defaults:
             if name not in cls._metrics:
@@ -198,13 +160,11 @@ class MetricsRegistry:
 # Rate Limiter (Token Bucket Algorithm)
 # ---------------------------------------------------------------------------
 
-
 class TokenBucketRateLimiter:
     """
     Token bucket rate limiter.
     Each client gets `capacity` tokens, refilled at `refill_rate` tokens/second.
     """
-
     _buckets: Dict[str, Dict] = {}
     _lock = threading.Lock()
 
@@ -241,7 +201,6 @@ class TokenBucketRateLimiter:
 # Structured Logger
 # ---------------------------------------------------------------------------
 
-
 class StructuredLogger:
     """
     JSON-structured logging for ELK Stack / Datadog / CloudWatch.
@@ -270,64 +229,41 @@ class StructuredLogger:
 
     @classmethod
     def log_request(cls, request_id: str, method: str, path: str, client_ip: str) -> None:
-        cls.log(
-            "info",
-            "http_request_start",
-            request_id=request_id,
-            method=method,
-            path=path,
-            client_ip=client_ip,
-        )
+        cls.log("info", "http_request_start",
+                request_id=request_id, method=method, path=path, client_ip=client_ip)
 
     @classmethod
     def log_response(
-        cls,
-        request_id: str,
-        method: str,
-        path: str,
-        status_code: int,
-        duration_ms: float,
+        cls, request_id: str, method: str, path: str,
+        status_code: int, duration_ms: float
     ) -> None:
         level = "error" if status_code >= 500 else "warning" if status_code >= 400 else "info"
-        cls.log(
-            level,
-            "http_request_complete",
-            request_id=request_id,
-            method=method,
-            path=path,
-            status_code=status_code,
-            duration_ms=round(duration_ms, 2),
-        )
+        cls.log(level, "http_request_complete",
+                request_id=request_id, method=method, path=path,
+                status_code=status_code, duration_ms=round(duration_ms, 2))
 
     @classmethod
-    def log_ml_inference(cls, model_name: str, latency_ms: float, input_features: int, prediction: float) -> None:
-        cls.log(
-            "info",
-            "ml_inference",
-            model=model_name,
-            latency_ms=round(latency_ms, 2),
-            input_features=input_features,
-            prediction=round(prediction, 4),
-        )
+    def log_ml_inference(
+        cls, model_name: str, latency_ms: float,
+        input_features: int, prediction: float
+    ) -> None:
+        cls.log("info", "ml_inference",
+                model=model_name, latency_ms=round(latency_ms, 2),
+                input_features=input_features, prediction=round(prediction, 4))
 
     @classmethod
     def log_drift_alert(cls, feature: str, psi: float, severity: str) -> None:
-        cls.log(
-            "warning" if severity == "warning" else "error",
-            "drift_detected",
-            feature=feature,
-            psi=psi,
-            severity=severity,
-        )
+        cls.log("warning" if severity == "warning" else "error",
+                "drift_detected", feature=feature, psi=psi, severity=severity)
 
 
 # Needed for type hint in TokenBucketRateLimiter
+from typing import Tuple
 
 
 # ---------------------------------------------------------------------------
 # FastAPI Monitoring Middleware
 # ---------------------------------------------------------------------------
-
 
 class MonitoringMiddleware(BaseHTTPMiddleware):
     """
@@ -340,11 +276,7 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
     """
 
     # Endpoints exempt from rate limiting
-    RATE_LIMIT_EXEMPT = {
-        "/api/v1/health",
-        "/api/v1/metrics",
-        "/api/v1/metrics/prometheus",
-    }
+    RATE_LIMIT_EXEMPT = {"/api/v1/health", "/api/v1/metrics", "/api/v1/metrics/prometheus"}
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Generate correlation ID
@@ -355,12 +287,14 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
 
         # Rate limiting (skip for exempt paths)
         if path not in self.RATE_LIMIT_EXEMPT:
-            allowed, tokens_left = TokenBucketRateLimiter.is_allowed(client_ip, capacity=200.0, refill_rate=20.0)
+            allowed, tokens_left = TokenBucketRateLimiter.is_allowed(
+                client_ip, capacity=200.0, refill_rate=20.0
+            )
             if not allowed:
                 MetricsRegistry.increment("rate_limit_rejections_total")
-                StructuredLogger.log("warning", "rate_limit_exceeded", client_ip=client_ip, path=path)
+                StructuredLogger.log("warning", "rate_limit_exceeded",
+                                     client_ip=client_ip, path=path)
                 from fastapi.responses import JSONResponse
-
                 return JSONResponse(
                     status_code=429,
                     content={"error": "Rate limit exceeded", "retry_after_seconds": 1},
@@ -383,13 +317,8 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception as exc:
             MetricsRegistry.increment("http_errors_total")
-            StructuredLogger.log(
-                "error",
-                "unhandled_exception",
-                request_id=request_id,
-                path=path,
-                error=str(exc),
-            )
+            StructuredLogger.log("error", "unhandled_exception",
+                                 request_id=request_id, path=path, error=str(exc))
             raise
 
         # Record timing
@@ -416,7 +345,6 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
 # ---------------------------------------------------------------------------
 # SLA Monitor
 # ---------------------------------------------------------------------------
-
 
 class SLAMonitor:
     """
@@ -453,11 +381,8 @@ class SLAMonitor:
             if not sla_met:
                 report["overall_sla_met"] = False
                 StructuredLogger.log(
-                    "warning",
-                    "sla_breach",
-                    endpoint=endpoint,
-                    p99_ms=p99,
-                    target_ms=target_p99,
+                    "warning", "sla_breach",
+                    endpoint=endpoint, p99_ms=p99, target_ms=target_p99
                 )
 
         return report
@@ -466,7 +391,6 @@ class SLAMonitor:
 # ---------------------------------------------------------------------------
 # Health Check Service
 # ---------------------------------------------------------------------------
-
 
 class HealthChecker:
     """Deep health check across all system dependencies."""
@@ -478,7 +402,6 @@ class HealthChecker:
         # Database check
         try:
             from backend.database.connection import engine
-
             with engine.connect() as conn:
                 conn.execute(__import__("sqlalchemy").text("SELECT 1"))
             checks["database"] = {"status": "healthy", "latency_ms": 1}
@@ -487,8 +410,7 @@ class HealthChecker:
 
         # Redis check
         try:
-            from backend.services.cache_service import REDIS_AVAILABLE, redis_client
-
+            from backend.services.cache_service import redis_client, REDIS_AVAILABLE
             if REDIS_AVAILABLE and redis_client:
                 redis_client.ping()
                 checks["redis"] = {"status": "healthy"}
@@ -500,7 +422,6 @@ class HealthChecker:
         # ML models check
         try:
             from backend.services.ranking_engine import PointwiseScorer
-
             test_features = {"bm25_score": 1.0, "tfidf_cosine": 0.5}
             score = PointwiseScorer.score(test_features)
             checks["ml_models"] = {"status": "healthy", "test_score": score}
@@ -510,19 +431,16 @@ class HealthChecker:
         # Feature store check
         try:
             from backend.feature_store.feature_store import OnlineFeatureStore
-
             stats = OnlineFeatureStore.cache_stats()
             checks["feature_store"] = {"status": "healthy", **stats}
         except Exception as e:
             checks["feature_store"] = {"status": "unhealthy", "error": str(e)[:100]}
 
-        overall = (
-            "healthy"
-            if all(c.get("status") == "healthy" for c in checks.values())
-            else "degraded"
-            if any(c.get("status") == "healthy" for c in checks.values())
-            else "unhealthy"
-        )
+        overall = "healthy" if all(
+            c.get("status") == "healthy" for c in checks.values()
+        ) else "degraded" if any(
+            c.get("status") == "healthy" for c in checks.values()
+        ) else "unhealthy"
 
         return {
             "status": overall,
